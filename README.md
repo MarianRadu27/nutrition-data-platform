@@ -1,6 +1,6 @@
 # Meal Nutrition Calculator
 
-A full-stack nutrition web application built with **FastAPI**, **PostgreSQL** and **Next.js**.
+A full-stack nutrition web application built with **FastAPI**, **MySQL** and **Next.js**.
 
 The application allows users to search food items, calculate nutritional values for meals and manage food data through an admin interface.
 
@@ -10,7 +10,7 @@ This project is a practical full-stack application focused on nutrition data man
 
 The main goal is to provide a simple and reliable way to:
 
-- search foods from a PostgreSQL database;
+- search foods from a MySQL database;
 - calculate nutrition values based on selected foods and quantities;
 - manage food entries from an admin page;
 - expose backend functionality through a FastAPI REST API;
@@ -22,7 +22,7 @@ The main goal is to provide a simple and reliable way to:
 
 - Python
 - FastAPI
-- PostgreSQL
+- MySQL
 - Pydantic
 - Uvicorn
 
@@ -35,7 +35,7 @@ The main goal is to provide a simple and reliable way to:
 ### Infrastructure
 
 - Docker Compose
-- PostgreSQL container
+- MySQL container
 
 ## Project Structure
 
