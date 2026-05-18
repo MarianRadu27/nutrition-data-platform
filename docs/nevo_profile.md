@@ -11,12 +11,12 @@ Local files inspected:
 ```text
 temp/EuropeNutrientsDBs/nevo/NEVO2025_v9.0.csv
 temp/EuropeNutrientsDBs/nevo/NEVO2025_v9.0_Nutrienten_Nutrients.csv
+temp/EuropeNutrientsDBs/nevo/NEVO2025_v9.0_Details.csv
 ```
 
 Related files available for later analysis:
 
 ```text
-temp/EuropeNutrientsDBs/nevo/NEVO2025_v9.0_Details.csv
 temp/EuropeNutrientsDBs/nevo/NEVO2025_v9.0_Recepten_Recipes.csv
 temp/EuropeNutrientsDBs/nevo/NEVO2025_v9.0_Referenties_References.csv
 temp/EuropeNutrientsDBs/nevo/Conditions of use NEVO-online 2025 dataset.pdf
@@ -241,7 +241,9 @@ NEVO2025_v9.0_Nutrienten_Nutrients.csv
 Observed profile:
 
 ```text
-Rows: 137
+Rows: 142
+Unique nutrient codes: 137
+Duplicate nutrient code names: 5
 ```
 
 First nutrient definitions:
@@ -274,9 +276,145 @@ Dictionary codes not in main file: 0
 
 Conclusion:
 
-The main file and the nutrient dictionary are aligned. Every nutrient column in the main file has a definition in the dictionary, and every dictionary code appears in the main file.
+The main file and the nutrient dictionary are aligned at the unique-code level. Every nutrient column in the main file has a definition in the dictionary, and every unique dictionary code appears in the main file.
 
 This is good for import because nutrient definitions can be loaded from the dictionary and nutrient values can be mapped safely by code.
+
+Important detail:
+
+The dictionary has 142 rows but 137 unique nutrient codes. Five nutrient codes appear twice because they are listed in more than one nutrient group:
+
+```text
+PROT
+FAT
+CHO
+FIBT
+ASH
+```
+
+For import, nutrient identity should be based on the unique `Nutrient-code`, while repeated dictionary rows can be treated as alternate grouping metadata.
+
+## Details File Structure
+
+Details file:
+
+```text
+NEVO2025_v9.0_Details.csv
+```
+
+Observed profile:
+
+```text
+Rows: 270810
+Columns: 17
+```
+
+The details file is in long format:
+
+```text
+one row = one food + one nutrient + one value
+```
+
+Important columns:
+
+```text
+NEVO-code
+Engelse naam/Food name
+Hoeveelheid/Quantity
+Component group
+Nutrient-code
+Component
+Gehalte/Value
+Eenheid/Unit
+Broncode/Source code
+Referentie/Reference
+```
+
+This file is useful because it carries source/reference metadata for nutrient values, while the main file is easier to scan because it has one row per food.
+
+## Details File Relationships
+
+The details file was compared with the main food file and the nutrient dictionary.
+
+Food code comparison:
+
+```text
+Food codes in Details: 2328
+Food codes in Main: 2328
+Details food codes missing from Main: 0
+```
+
+Nutrient code comparison:
+
+```text
+Nutrient codes in Details: 137
+Nutrient codes in dictionary: 137
+Details nutrient codes missing from dictionary: 0
+```
+
+Conclusion:
+
+The details file is aligned with both the main food file and the nutrient dictionary. Every food code in `Details` exists in the main file, and every nutrient code in `Details` exists in the nutrient dictionary.
+
+## Details Duplicate Behavior
+
+The details file contains repeated `NEVO-code + Nutrient-code` pairs:
+
+```text
+Duplicate food/nutrient pairs: 10410
+```
+
+This is not automatically a data quality error. Some nutrients appear in more than one component group. For example, protein can appear under both:
+
+```text
+Energy and macronutrients
+Protein
+```
+
+The important quality check is whether the same `NEVO-code + Nutrient-code` pair has conflicting values or units.
+
+Observed result:
+
+```text
+Food/nutrient pairs with different value or unit: 0
+```
+
+Conclusion:
+
+The repeated pairs do not create conflicting nutrient values. For import, the pipeline can safely deduplicate details rows by food code, nutrient code, value, and unit, or select one value per food code and nutrient code while preserving source/reference metadata separately.
+
+## Main vs Details Value Comparison
+
+The main file and details file were compared for the main calculator-style nutrients:
+
+```text
+ENERCC
+PROT
+CHO
+FAT
+FIBT
+```
+
+The comparison matched values from:
+
+```text
+Main file:    nutrient columns such as ENERCC (kcal), PROT (g), FIBT (g)
+Details file: NEVO-code + Nutrient-code + Gehalte/Value
+```
+
+Observed result:
+
+```text
+Main/details mismatches: 0
+```
+
+Important detail:
+
+The 7 missing fibre values are missing consistently in both files. In the main file, `FIBT (g)` is blank for those foods. In the details file, there is no `FIBT` row for those same foods. This is treated as aligned missing data, not as a mismatch.
+
+Conclusion:
+
+For the main nutrients checked, the wide-format main file and the long-format details file agree. This supports using the main file for food metadata and the details file for nutrient values during a future NEVO import.
 
 ## Import Implications
 
@@ -292,6 +430,9 @@ Nutrient-code -> nutrients.source_code or nutrient mapping table
 Component -> nutrients.source_name
 Eenheid/Unit -> nutrients.unit
 nutrient value columns -> source_food_nutrient_values.value
+Gehalte/Value -> source_food_nutrient_values.value
+Broncode/Source code -> source/reference metadata
+Referentie/Reference -> source/reference metadata
 ```
 
 NEVO should be imported into external-source tables, not directly into the current `foods` table.
@@ -302,11 +443,8 @@ The current calculator should continue using the current local Appendix H datase
 
 Recommended next checks:
 
-1. Profile `NEVO2025_v9.0_Details.csv`.
-2. Compare main file values with details file values for selected nutrients.
-3. Check whether all details nutrients are represented in the dictionary.
-4. Count missing values across all nutrient columns, not just main macros.
-5. Identify nutrients with the most missing values.
-6. Review reference/source fields in the details file.
-7. Decide how to store `per 100g` and `per 100ml` rows in the database.
-
+1. Count missing values across all nutrient columns, not just main macros.
+2. Identify nutrients with the most missing values.
+3. Review reference/source fields in the details file.
+4. Decide how to store `per 100g` and `per 100ml` rows in the database.
+5. Draft the external-source database schema before importing NEVO.
