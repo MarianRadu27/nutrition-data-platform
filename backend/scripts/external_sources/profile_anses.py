@@ -185,6 +185,131 @@ def print_category_profile(
     print("=" * 30)
 
 
+def is_missing_value(value) -> bool:
+    """Return True when a source value should be treated as missing."""
+    if value is None:
+        return True
+
+    cleaned_value = str(value).strip()
+
+    if cleaned_value == "":
+        return True
+
+    if cleaned_value == "-":
+        return True
+
+    return False
+
+
+def is_numeric_value(value) -> bool:
+    """Check to see if value is numeric."""
+
+    if isinstance(value, (int, float)):
+        return True
+    
+    replacement = value.replace(",", ".")
+
+    try:
+        float(replacement)
+        return True
+    except ValueError:
+        return False
+
+
+def print_non_numeric_values(
+        worksheet,
+        columns: list[str],
+        nutrient_columns: list[str],
+) -> None: 
+    """Count non-numeric values in nutrient columns."""
+
+    non_numeric_counts = {}
+
+    non_numeric_text_counts = {}
+
+    for nutrient_column in nutrient_columns:
+        non_numeric_counts[nutrient_column] = 0
+
+    rows = worksheet.iter_rows(min_row=2, values_only=True)
+
+    for row in rows:
+        food_row = dict(zip(columns, row))
+
+        for nutrient_column in nutrient_columns:
+            value = food_row[nutrient_column]
+
+            if is_missing_value(value):
+                continue
+
+            if is_numeric_value(value):
+                continue
+
+            normalized_value = str(value).replace("\n", " ").strip()
+
+            non_numeric_counts[nutrient_column] += 1
+
+            non_numeric_text_counts[normalized_value] = (
+                non_numeric_text_counts.get(normalized_value, 0) + 1)
+
+    sorted_non_numeric_texts = sorted(
+        non_numeric_text_counts.items(), 
+        key=lambda item: item[1], 
+        reverse=True,
+    )
+    print("Most common non-numeric nutrient values")
+    print("=" * 30)
+    for text, count in sorted_non_numeric_texts[:20]:
+        print(f"- {text}: {count}")
+
+
+def print_all_nutrient_missing_values(
+    worksheet,
+    columns: list[str],
+    nutrient_columns: list[str],
+) -> None:
+    """Profile all nutrients to see what values are missing."""
+    results: list[tuple[str, int, int]] = []
+
+    missing_counts = {}
+
+    for nutrient_column in nutrient_columns:
+        missing_counts[nutrient_column] = 0
+
+    rows = worksheet.iter_rows(min_row=2, values_only=True)
+
+    for row in rows:
+        food_row = dict(zip(columns, row))
+
+        for nutrient_column in nutrient_columns:
+            value = food_row[nutrient_column]
+
+            if is_missing_value(value):
+                missing_counts[nutrient_column] += 1
+
+    total_food_rows = worksheet.max_row - 1
+
+    for nutrient_column in nutrient_columns:
+        missing_count = missing_counts[nutrient_column]
+        present_count = total_food_rows - missing_count
+        results.append((nutrient_column, present_count, missing_count))
+
+    results.sort(key=lambda item: item[2], reverse=True)
+
+    for nutrient_column, present_count, missing_count in results[:20]:
+        print(f"Nutrient name: {nutrient_column}, present = {present_count}, missing = {missing_count}")
+        
+    print("=" * 30)
+    print("Nutrients with fewest missing values")
+    print("=" * 30)
+
+    results.sort(key=lambda item:item[2])
+
+    for nutrient_column, present_count, missing_count in results[:20]:
+        print(f"Nutrient name: {nutrient_column}, present = {present_count}, missing = {missing_count}")
+        
+    print("=" * 30)
+
+
 def main() -> int:
     """Run the ANSES profiling checks."""
     if not MAIN_FILE.exists():
@@ -213,6 +338,8 @@ def main() -> int:
     print_first_foods(worksheet, columns)
     print_food_code_uniqueness(worksheet, columns)
     print_category_profile(worksheet, columns)
+    print_all_nutrient_missing_values(worksheet, columns, nutrient_columns)
+    print_non_numeric_values(worksheet, columns, nutrient_columns)
 
     return 0
 
