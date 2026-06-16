@@ -23,6 +23,7 @@ frontend/.env.local
 *.xlsx
 temp/
 designs/
+local_backups/
 
 # Public sample data kept in Git so other people can try the project.
 !backend/data/FoodsFinal_sample.xlsx

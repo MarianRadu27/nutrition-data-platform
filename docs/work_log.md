@@ -183,6 +183,369 @@ The `temp/` folder should stay out of Git unless the project deliberately adds
 small public sample files. The source datasets are public, but keeping large raw
 files out of the repo is still cleaner.
 
+## Full Setup On A New PC
+
+This section is the practical checklist for rebuilding the project from scratch
+on another Windows PC.
+
+### 1. Install Required Tools
+
+Install these first:
+
+```text
+Git
+Docker Desktop
+Python
+Node.js LTS
+VS Code
+```
+
+Recommended checks in PowerShell:
+
+```powershell
+git --version
+docker --version
+py --version
+node --version
+npm --version
+```
+
+If `py --version` works, use `py` in commands. If only `python --version` works,
+use `python` instead.
+
+### 2. Clone The Repository
+
+Choose a folder where the project should live, then run:
+
+```powershell
+git clone https://github.com/MarianRadu27/nutrition-data-platform.git
+cd nutrition-data-platform
+```
+
+This gives the new PC all files tracked by Git, including:
+
+```text
+backend/
+frontend/
+infra/
+docs/
+README.md
+.gitignore
+```
+
+It also includes:
+
+```text
+backend/migrations/001_add_ro_columns.sql
+backend/data/FoodsFinal_sample.xlsx
+docs/work_log.md
+```
+
+So `migrations` does not need to be copied separately by USB.
+
+### 3. Copy Local Files From USB
+
+Copy these folders/files from the old PC if they are needed:
+
+Required for external-source profiling:
+
+```text
+temp/
+```
+
+Important local working data:
+
+```text
+backend/data/FoodsFinal.xlsx
+backend/data/FoodsFinalBackup.xlsx
+backend/data/FoodsFinal_with_ro.xlsx
+backend/data/translation_review_with_suggestions.xlsx
+```
+
+Optional design work:
+
+```text
+designs/
+```
+
+Only copy local env files if they exist and are needed:
+
+```text
+backend/.env
+frontend/.env.local
+```
+
+Do not copy these unless there is a special reason:
+
+```text
+backend/.venv/
+frontend/node_modules/
+frontend/.next/
+__pycache__/
+```
+
+These are generated dependency/build/cache folders and can be recreated.
+
+### 4. Create Environment Files
+
+Backend:
+
+```powershell
+Copy-Item backend\.env.example backend\.env
+```
+
+Default backend values:
+
+```text
+DB_HOST=127.0.0.1
+DB_PORT=3307
+DB_USER=nutrition
+DB_PASSWORD=nutritionpass
+DB_NAME=nutrition
+ADMIN_TOKEN=change-me-local-admin-token
+FRONTEND_ORIGIN=http://localhost:3000
+```
+
+Frontend:
+
+```powershell
+Copy-Item frontend\.env.local.example frontend\.env.local
+```
+
+Default frontend values:
+
+```text
+NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000
+NEXT_PUBLIC_ADMIN_TOKEN=change-me-local-admin-token
+```
+
+Make sure the admin token matches between:
+
+```text
+backend/.env
+frontend/.env.local
+```
+
+### 5. Start MySQL And Adminer
+
+The project uses Docker Compose for local MySQL and Adminer.
+
+From the project root:
+
+```powershell
+docker compose -f infra/docker-compose.yml up -d
+```
+
+This starts:
+
+```text
+MySQL container:   nutrition_mysql
+Adminer container: nutrition_adminer
+```
+
+Database connection:
+
+```text
+host:     127.0.0.1
+port:     3307
+database: nutrition
+user:     nutrition
+password: nutritionpass
+```
+
+Adminer URL:
+
+```text
+http://localhost:8080
+```
+
+Adminer login:
+
+```text
+System:   MySQL
+Server:   db
+Username: nutrition
+Password: nutritionpass
+Database: nutrition
+```
+
+Note: inside Docker Compose, Adminer connects to MySQL with server `db`, not
+`127.0.0.1`.
+
+To stop containers:
+
+```powershell
+docker compose -f infra/docker-compose.yml down
+```
+
+Do not add `-v` unless you intentionally want to delete the MySQL volume and all
+local database data.
+
+### 6. Rebuild Or Restore The Database
+
+There are two possible ways to get the database back.
+
+Option A: restore an SQL dump from the old PC.
+
+This is the safest option if the old database contains manual changes,
+translations, imported full data, or experiments that are not fully reproducible
+from files.
+
+Create a dump on the old PC before switching machines. Example using Docker:
+
+```powershell
+docker exec nutrition_mysql mysqldump -u nutrition -pnutritionpass nutrition > nutrition_backup.sql
+```
+
+Copy this file to the new PC. Then restore it after MySQL is running:
+
+```powershell
+Get-Content nutrition_backup.sql | docker exec -i nutrition_mysql mysql -u nutrition -pnutritionpass nutrition
+```
+
+Option B: rebuild from Excel/import scripts.
+
+Use this if the source Excel files are enough and no manual DB changes need to be
+preserved.
+
+Important current note:
+
+```text
+backend/migrations/001_add_ro_columns.sql
+```
+
+adds Romanian columns, but the repository does not currently contain a full base
+schema migration that creates `categories`, `subcategories`, and `foods` from an
+empty database. If the new database is completely empty, confirm that the base
+tables exist before running the importer.
+
+If a full schema dump has not been created yet, create one from the old PC or add
+a future migration file for the base schema.
+
+After the base tables exist, import sample data:
+
+```powershell
+py backend\scripts\import_data_db.py --excel backend\data\FoodsFinal_sample.xlsx --verbose
+py backend\scripts\import_data_db.py --excel backend\data\FoodsFinal_sample.xlsx --commit
+```
+
+Or import the full local data if it was copied from USB:
+
+```powershell
+py backend\scripts\import_data_db.py --excel backend\data\FoodsFinal.xlsx --verbose
+py backend\scripts\import_data_db.py --excel backend\data\FoodsFinal.xlsx --commit
+```
+
+Then apply the Romanian-column migration if needed:
+
+```text
+backend/migrations/001_add_ro_columns.sql
+```
+
+This can be run through Adminer or through a MySQL client. If using Adminer,
+open the `nutrition` database, go to SQL command, paste the migration, and run
+it.
+
+### 7. Set Up The Backend
+
+From the project root:
+
+```powershell
+cd backend
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+```
+
+Run the backend:
+
+```powershell
+uvicorn app.main:app --reload
+```
+
+Backend URLs:
+
+```text
+http://127.0.0.1:8000
+http://127.0.0.1:8000/docs
+```
+
+If PowerShell blocks venv activation, run PowerShell as the current user and use:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+Only do this if needed.
+
+### 8. Set Up The Frontend
+
+Open a second terminal.
+
+From the project root:
+
+```powershell
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend URL:
+
+```text
+http://localhost:3000
+```
+
+### 9. Verify The App
+
+Check these pages:
+
+```text
+http://localhost:3000
+http://localhost:3000/foods
+http://localhost:3000/calculator
+http://localhost:3000/admin/add-food
+```
+
+Check the backend:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+If the frontend cannot reach the backend, check:
+
+```text
+frontend/.env.local
+backend/.env
+```
+
+If the backend cannot reach MySQL, check:
+
+```text
+docker compose -f infra/docker-compose.yml ps
+backend/.env
+```
+
+### 10. Restore Profiling Data
+
+For NEVO/ANSES profiling scripts to work, confirm these files exist:
+
+```text
+temp/EuropeNutrientsDBs/nevo/
+temp/EuropeNutrientsDBs/anses/
+```
+
+Run:
+
+```powershell
+py backend\scripts\external_sources\profile_nevo.py
+py backend\scripts\external_sources\profile_anses.py
+```
+
+If either script says "File not found", the `temp/` folder was not copied to the
+right location.
+
 ## Useful Commands
 
 Run ANSES profiling:
@@ -621,4 +984,3 @@ Then ask:
 ```text
 Hai sa continuam cu profilarea sheet-ului INFOODS codes din ANSES.
 ```
-
