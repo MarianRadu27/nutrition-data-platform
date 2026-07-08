@@ -119,6 +119,7 @@ export default function AdminAddFoodPage() {
             category_id (optional)
             <input
               type="number"
+              min="1"
               value={categoryId}
               onChange={(event) => setCategoryId(event.target.value)}
               style={{ display: "block", width: "100%", padding: 8 }}
@@ -148,6 +149,7 @@ export default function AdminAddFoodPage() {
             subcategory_id (optional)
             <input
               type="number"
+              min="1"
               value={subcategoryId}
               onChange={(event) => setSubcategoryId(event.target.value)}
               style={{ display: "block", width: "100%", padding: 8 }}
@@ -194,6 +196,7 @@ export default function AdminAddFoodPage() {
             quantity (optional)
             <input
               type="number"
+              min="0"
               step="0.01"
               value={quantity}
               onChange={(event) => setQuantity(event.target.value)}
@@ -213,6 +216,7 @@ export default function AdminAddFoodPage() {
             <input
               required
               type="number"
+              min="0.01"
               step="0.01"
               value={wtG}
               onChange={(event) => setWtG(event.target.value)}
@@ -224,6 +228,7 @@ export default function AdminAddFoodPage() {
             <input
               required
               type="number"
+              min="0"
               step="0.01"
               value={enerKcal}
               onChange={(event) => setEnerKcal(event.target.value)}
@@ -235,6 +240,7 @@ export default function AdminAddFoodPage() {
             <input
               required
               type="number"
+              min="0"
               step="0.01"
               value={protG}
               onChange={(event) => setProtG(event.target.value)}
@@ -246,6 +252,7 @@ export default function AdminAddFoodPage() {
             <input
               required
               type="number"
+              min="0"
               step="0.01"
               value={carboG}
               onChange={(event) => setCarboG(event.target.value)}
@@ -257,6 +264,7 @@ export default function AdminAddFoodPage() {
             <input
               required
               type="number"
+              min="0"
               step="0.01"
               value={fatG}
               onChange={(event) => setFatG(event.target.value)}
@@ -268,6 +276,7 @@ export default function AdminAddFoodPage() {
             <input
               required
               type="number"
+              min="0"
               step="0.01"
               value={fiberG}
               onChange={(event) => setFiberG(event.target.value)}

@@ -192,24 +192,24 @@ class MealCalcResponse(BaseModel):
 class AdminFoodCreateIn(BaseModel):
     """Payload for manually adding one custom food in local admin tools."""
 
-    category_id: int | None = None
+    category_id: int | None = Field(default=None, gt=0)
     category_name: str | None = None
     category_name_ro: str | None = None
 
-    subcategory_id: int | None = None
+    subcategory_id: int | None = Field(default=None, gt=0)
     subcategory_name: str | None = None
     subcategory_name_ro: str | None = None
 
     food_description: str = Field(min_length=1, max_length=255)
     food_description_ro: str | None = Field(default=None, max_length=255)
-    quantity: float | None = None
+    quantity: float | None = Field(default=None, ge=0)
     measure: str | None = Field(default=None, max_length=255)
     wt_g: float = Field(gt=0)
-    ener_kcal: float
-    prot_g: float
-    carbo_g: float
-    fat_g: float
-    fiber_g: float
+    ener_kcal: float = Field(ge=0)
+    prot_g: float = Field(ge=0)
+    carbo_g: float = Field(ge=0)
+    fat_g: float = Field(ge=0)
+    fiber_g: float = Field(ge=0)
 
     @model_validator(mode="after")
     def validate_refs(self) -> "AdminFoodCreateIn":
