@@ -7,6 +7,14 @@ from pydantic import BaseModel, Field, model_validator
 Lang = Literal["en", "ro"]
 
 
+class NutrientValueNote(BaseModel):
+    """Source marker for nutrient values stored numerically for calculations."""
+
+    raw: str
+    qualifier: Literal["lt", "trace"]
+    limit: float | None = None
+
+
 class CategoryOut(BaseModel):
     """Category returned to the frontend.
 
@@ -72,6 +80,7 @@ class FoodOut(BaseModel):
     vit_c_mg: float | None = None
     vit_b12_ug: float | None = None
     sele_ug: float | None = None
+    nutrient_value_notes: dict[str, NutrientValueNote] | None = None
     category_name_display: str | None = None
     subcategory_name_display: str | None = None
 
@@ -116,6 +125,7 @@ class FoodDetailOut(BaseModel):
     vit_c_mg: float | None = None
     vit_b12_ug: float | None = None
     sele_ug: float | None = None
+    nutrient_value_notes: dict[str, NutrientValueNote] | None = None
     category_name_display: str | None = None
     subcategory_name_display: str | None = None
 
@@ -166,6 +176,7 @@ class MealCalcItemOut(BaseModel):
     grams: float
     factor: float | None = None
     nutrients: NutrientsOut
+    nutrient_value_notes: dict[str, NutrientValueNote] | None = None
     incomplete_data: bool
     error: str | None = None
 

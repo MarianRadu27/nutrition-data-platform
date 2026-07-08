@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from app.schemas import AdminFoodCreateIn, Lang
@@ -12,6 +13,36 @@ def _display_expr(lang: Lang, ro_col: str, en_col: str) -> str:
     if lang == "ro":
         return f"COALESCE({ro_col}, {en_col})"
     return en_col
+
+
+def _parse_nutrient_value_notes(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, bytes):
+        value = value.decode("utf-8")
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            parsed = json.loads(stripped)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) and parsed else None
+    return None
+
+
+def _normalize_nutrient_value_notes(row: dict[str, Any]) -> dict[str, Any]:
+    row["nutrient_value_notes"] = _parse_nutrient_value_notes(
+        row.get("nutrient_value_notes")
+    )
+    return row
+
+
+def _normalize_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [_normalize_nutrient_value_notes(row) for row in rows]
 
 
 def list_categories(cursor: Any, lang: Lang) -> list[dict[str, Any]]:
@@ -138,6 +169,7 @@ def list_foods(
             f.vit_c_mg,
             f.vit_b12_ug,
             f.sele_ug,
+            f.nutrient_value_notes,
             {category_display_expr} AS category_name_display,
             {subcategory_display_expr} AS subcategory_name_display
         FROM foods f
@@ -150,7 +182,7 @@ def list_foods(
     page_params = [*params, limit, offset]
     cursor.execute(rows_sql, page_params)
     rows = cursor.fetchall()
-    return rows, total
+    return _normalize_rows(rows), total
 
 
 def get_foods_for_calc(
@@ -173,12 +205,13 @@ def get_foods_for_calc(
             f.prot_g,
             f.carbo_g,
             f.fat_g,
-            f.fiber_g
+            f.fiber_g,
+            f.nutrient_value_notes
         FROM foods f
         WHERE f.id IN ({placeholders})
     """
     cursor.execute(sql, food_ids)
-    rows = cursor.fetchall()
+    rows = _normalize_rows(cursor.fetchall())
     return {int(row["id"]): row for row in rows}
 
 
@@ -239,6 +272,7 @@ def get_food_detail(cursor: Any, food_id: int, lang: Lang) -> dict[str, Any] | N
             f.vit_c_mg,
             f.vit_b12_ug,
             f.sele_ug,
+            f.nutrient_value_notes,
             {category_name_display} AS category_name_display,
             {subcategory_name_display} AS subcategory_name_display
         FROM foods f
@@ -248,7 +282,8 @@ def get_food_detail(cursor: Any, food_id: int, lang: Lang) -> dict[str, Any] | N
     """
 
     cursor.execute(sql, (food_id,))
-    return cursor.fetchone()
+    row = cursor.fetchone()
+    return _normalize_nutrient_value_notes(row) if row else None
 
 
 def get_category_by_id(cursor: Any, category_id: int) -> dict[str, Any] | None:
@@ -397,6 +432,7 @@ def get_food_by_id(cursor: Any, food_id: int, lang: Lang) -> dict[str, Any] | No
             f.carbo_g,
             f.fat_g,
             f.fiber_g,
+            f.nutrient_value_notes,
             {category_display_expr} AS category_name_display,
             {subcategory_display_expr} AS subcategory_name_display
         FROM foods f
@@ -405,4 +441,5 @@ def get_food_by_id(cursor: Any, food_id: int, lang: Lang) -> dict[str, Any] | No
         WHERE f.id = %s
     """
     cursor.execute(sql, (food_id,))
-    return cursor.fetchone()
+    row = cursor.fetchone()
+    return _normalize_nutrient_value_notes(row) if row else None

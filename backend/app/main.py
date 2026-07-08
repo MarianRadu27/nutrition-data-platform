@@ -18,6 +18,9 @@ BASE_NUTRIENTS = [
     ("fat_g", "fat_g"),
     ("fiber_g", "fiber_g"),
 ]
+CALC_NOTE_FIELDS = {
+    db_col: out_col for db_col, out_col in BASE_NUTRIENTS
+}
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +34,17 @@ def _as_float(value: Any) -> float:
 def _rounded_nutrients(payload: dict[str, float]) -> dict[str, float]:
     """Keep API responses readable without losing too much precision."""
     return {key: round(value, 4) for key, value in payload.items()}
+
+
+def _calc_nutrient_notes(food: dict[str, Any]) -> dict[str, Any] | None:
+    """Map DB nutrient notes to calculator response nutrient names."""
+    source_notes = food.get("nutrient_value_notes") or {}
+    notes = {
+        out_col: source_notes[db_col]
+        for db_col, out_col in CALC_NOTE_FIELDS.items()
+        if db_col in source_notes
+    }
+    return notes or None
 
 
 def get_db_connection() -> Iterator[Connection]:
@@ -175,6 +189,7 @@ def calculate_meal(
                         fat_g=0.0,
                         fiber_g=0.0,
                     ),
+                    nutrient_value_notes=None,
                     incomplete_data=True,
                     error="food not found",
                 )
@@ -197,6 +212,7 @@ def calculate_meal(
                         fat_g=0.0,
                         fiber_g=0.0,
                     ),
+                    nutrient_value_notes=_calc_nutrient_notes(db_food),
                     incomplete_data=True,
                     error="cannot calculate by grams: wt_g is null or <= 0",
                 )
@@ -235,6 +251,7 @@ def calculate_meal(
                 grams=item.grams,
                 factor=round(factor, 6),
                 nutrients=schemas.NutrientsOut(**_rounded_nutrients(nutrients)),
+                nutrient_value_notes=_calc_nutrient_notes(db_food),
                 incomplete_data=item_incomplete,
                 error=None,
             )

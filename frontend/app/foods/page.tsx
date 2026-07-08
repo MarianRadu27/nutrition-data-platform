@@ -20,6 +20,44 @@ type Subcategory = {
   name_display: string;
 };
 
+type NutrientField =
+  | "wt_g"
+  | "h2o_g"
+  | "ener_kcal"
+  | "prot_g"
+  | "carbo_g"
+  | "fiber_g"
+  | "fat_g"
+  | "sat_g"
+  | "mono_g"
+  | "poly_g"
+  | "trans_g"
+  | "chol_mg"
+  | "calc_mg"
+  | "iron_mg"
+  | "magn_mg"
+  | "pota_mg"
+  | "sodi_mg"
+  | "zinc_mg"
+  | "vit_a_ug"
+  | "vit_e_mg"
+  | "thia_mg"
+  | "ribo_mg"
+  | "niac_mg"
+  | "vit_b6_mg"
+  | "fola_ug"
+  | "vit_c_mg"
+  | "vit_b12_ug"
+  | "sele_ug";
+
+type NutrientValueNote = {
+  raw: string;
+  qualifier: "lt" | "trace";
+  limit: number | null;
+};
+
+type NutrientValueNotes = Partial<Record<NutrientField, NutrientValueNote>>;
+
 type Food = {
   id: number;
   da_code: number;
@@ -58,6 +96,7 @@ type Food = {
   vit_c_mg: number | null;
   vit_b12_ug: number | null;
   sele_ug: number | null;
+  nutrient_value_notes: NutrientValueNotes | null;
 };
 
 type FoodsResponse = {
@@ -86,33 +125,34 @@ const LANG_KEY = "app_lang";
 
 type ExtraNutrientColumn = {
   label: string;
+  field: NutrientField;
   getValue: (food: Food) => number | null;
 };
 
 const EXTRA_NUTRIENT_COLUMNS: ExtraNutrientColumn[] = [
   // These columns are shown only when the general nutrients button is active.
-  { label: "Water (g)", getValue: (food) => food.h2o_g },
-  { label: "Saturated fat (g)", getValue: (food) => food.sat_g },
-  { label: "Monounsaturated fat (g)", getValue: (food) => food.mono_g },
-  { label: "Polyunsaturated fat (g)", getValue: (food) => food.poly_g },
-  { label: "Trans fat (g)", getValue: (food) => food.trans_g },
-  { label: "Cholesterol (mg)", getValue: (food) => food.chol_mg },
-  { label: "Calcium (mg)", getValue: (food) => food.calc_mg },
-  { label: "Iron (mg)", getValue: (food) => food.iron_mg },
-  { label: "Magnesium (mg)", getValue: (food) => food.magn_mg },
-  { label: "Potassium (mg)", getValue: (food) => food.pota_mg },
-  { label: "Sodium (mg)", getValue: (food) => food.sodi_mg },
-  { label: "Zinc (mg)", getValue: (food) => food.zinc_mg },
-  { label: "Vitamin A (ug)", getValue: (food) => food.vit_a_ug },
-  { label: "Vitamin E (mg)", getValue: (food) => food.vit_e_mg },
-  { label: "Thiamin (mg)", getValue: (food) => food.thia_mg },
-  { label: "Riboflavin (mg)", getValue: (food) => food.ribo_mg },
-  { label: "Niacin (mg)", getValue: (food) => food.niac_mg },
-  { label: "Vitamin B6 (mg)", getValue: (food) => food.vit_b6_mg },
-  { label: "Folate (ug)", getValue: (food) => food.fola_ug },
-  { label: "Vitamin C (mg)", getValue: (food) => food.vit_c_mg },
-  { label: "Vitamin B12 (ug)", getValue: (food) => food.vit_b12_ug },
-  { label: "Selenium (ug)", getValue: (food) => food.sele_ug },
+  { label: "Water (g)", field: "h2o_g", getValue: (food) => food.h2o_g },
+  { label: "Saturated fat (g)", field: "sat_g", getValue: (food) => food.sat_g },
+  { label: "Monounsaturated fat (g)", field: "mono_g", getValue: (food) => food.mono_g },
+  { label: "Polyunsaturated fat (g)", field: "poly_g", getValue: (food) => food.poly_g },
+  { label: "Trans fat (g)", field: "trans_g", getValue: (food) => food.trans_g },
+  { label: "Cholesterol (mg)", field: "chol_mg", getValue: (food) => food.chol_mg },
+  { label: "Calcium (mg)", field: "calc_mg", getValue: (food) => food.calc_mg },
+  { label: "Iron (mg)", field: "iron_mg", getValue: (food) => food.iron_mg },
+  { label: "Magnesium (mg)", field: "magn_mg", getValue: (food) => food.magn_mg },
+  { label: "Potassium (mg)", field: "pota_mg", getValue: (food) => food.pota_mg },
+  { label: "Sodium (mg)", field: "sodi_mg", getValue: (food) => food.sodi_mg },
+  { label: "Zinc (mg)", field: "zinc_mg", getValue: (food) => food.zinc_mg },
+  { label: "Vitamin A (ug)", field: "vit_a_ug", getValue: (food) => food.vit_a_ug },
+  { label: "Vitamin E (mg)", field: "vit_e_mg", getValue: (food) => food.vit_e_mg },
+  { label: "Thiamin (mg)", field: "thia_mg", getValue: (food) => food.thia_mg },
+  { label: "Riboflavin (mg)", field: "ribo_mg", getValue: (food) => food.ribo_mg },
+  { label: "Niacin (mg)", field: "niac_mg", getValue: (food) => food.niac_mg },
+  { label: "Vitamin B6 (mg)", field: "vit_b6_mg", getValue: (food) => food.vit_b6_mg },
+  { label: "Folate (ug)", field: "fola_ug", getValue: (food) => food.fola_ug },
+  { label: "Vitamin C (mg)", field: "vit_c_mg", getValue: (food) => food.vit_c_mg },
+  { label: "Vitamin B12 (ug)", field: "vit_b12_ug", getValue: (food) => food.vit_b12_ug },
+  { label: "Selenium (ug)", field: "sele_ug", getValue: (food) => food.sele_ug },
 ];
 
 function formatNumber(value: number | null): string {
@@ -120,6 +160,15 @@ function formatNumber(value: number | null): string {
     return "-";
   }
   return value.toFixed(2);
+}
+
+function formatNutrientValue(
+  food: Food,
+  field: NutrientField,
+  value: number | null,
+): string {
+  const note = food.nutrient_value_notes?.[field];
+  return note?.raw ?? formatNumber(value);
 }
 
 function groupFoodsByCategoryAndFood(items: Food[]): CategoryGroup[] {
@@ -529,28 +578,28 @@ export default function FoodsPage() {
                                     </td>
                                     <td style={{ border: "1px solid #ddd", padding: 8 }}>{food.measure ?? "-"}</td>
                                     <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                                      {formatNumber(food.wt_g)}
+                                      {formatNutrientValue(food, "wt_g", food.wt_g)}
                                     </td>
                                     <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                                      {formatNumber(food.ener_kcal)}
+                                      {formatNutrientValue(food, "ener_kcal", food.ener_kcal)}
                                     </td>
                                     <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                                      {formatNumber(food.prot_g)}
+                                      {formatNutrientValue(food, "prot_g", food.prot_g)}
                                     </td>
                                     <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                                      {formatNumber(food.carbo_g)}
+                                      {formatNutrientValue(food, "carbo_g", food.carbo_g)}
                                     </td>
                                     <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                                      {formatNumber(food.fat_g)}
+                                      {formatNutrientValue(food, "fat_g", food.fat_g)}
                                     </td>
                                     <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                                      {formatNumber(food.fiber_g)}
+                                      {formatNutrientValue(food, "fiber_g", food.fiber_g)}
                                     </td>
 
                                     {showExtraNutrients &&
                                       EXTRA_NUTRIENT_COLUMNS.map((column) => (
                                         <td key={column.label} style={{ border: "1px solid #ddd", padding: 8}}>
-                                          {formatNumber(column.getValue(food))}
+                                          {formatNutrientValue(food, column.field, column.getValue(food))}
                                         </td>
                                       ))}
                                   </tr>

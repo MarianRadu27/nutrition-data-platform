@@ -58,6 +58,7 @@ nutrition-data-platform/
 |   |-- migrations/
 |   |   |-- 000_initial_schema.sql
 |   |   |-- 001_add_ro_columns.sql
+|   |   |-- 002_add_nutrient_value_notes.sql
 |   |
 |   |-- scripts/
 |   |   |-- apply_migrations.py
@@ -262,6 +263,15 @@ The helper script below can mark this automatically from bold Excel rows:
 python backend\scripts\mark_own_subcategories.py --input backend\data\FoodsFinal.xlsx --output backend\data\FoodsFinal_marked.xlsx
 ```
 
+### Below-Limit Nutrient Values
+
+Excel nutrient markers such as `<1`, `<.1`, `<.01`, `trace`, `t`, and `tr`
+are stored as numeric `0` so the calculator can keep doing simple arithmetic.
+The original marker is preserved in `foods.nutrient_value_notes`, so the UI can
+show the source value instead of displaying it as an exact zero.
+
+Empty values and `-` are treated as missing values, not as zero.
+
 ## Romanian Translation Workflow
 
 The project supports Romanian text columns:
@@ -277,6 +287,7 @@ The migration files are:
 ```text
 backend/migrations/000_initial_schema.sql
 backend/migrations/001_add_ro_columns.sql
+backend/migrations/002_add_nutrient_value_notes.sql
 ```
 
 Typical translation workflow:

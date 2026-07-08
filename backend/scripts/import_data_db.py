@@ -10,6 +10,7 @@ The workbook uses visual hierarchy rows:
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import re
 import sys
@@ -21,10 +22,10 @@ from typing import Any
 import pandas as pd
 import pymysql
 
-TRACE_NUMERIC_VALUE = 0.0
-# Empty markers mean "unknown"; trace markers are stored as zero but still parsed.
+BELOW_LIMIT_CALC_VALUE = 0.0
+# Empty markers mean "unknown"; trace and below-limit markers are stored as zero for calculations.
 NULL_NUMERIC_TOKENS = {"", "-", "\u2013", "\u2014"}
-TRACE_NUMERIC_TOKENS = {"<1", "<.1", "<.01", "t", "tr", "trace"}
+TRACE_NUMERIC_TOKENS = {"t", "tr", "trace"}
 UNICODE_FRACTIONS = {
     "¼": "1/4",
     "½": "1/2",
@@ -85,6 +86,7 @@ FOOD_COLUMNS = [
     "quantity",
     "measure",
     *NUMERIC_COLUMNS,
+    "nutrient_value_notes",
 ]
 
 HEADER_ALIAS_TO_DB = {
@@ -149,6 +151,8 @@ class ImportStats:
     warnings: int = 0
     food_preview: list[dict[str, Any]] = field(default_factory=list)
     food_rows_processed: int = 0
+    below_limit_values: int = 0
+    trace_values: int = 0
 
 
 def normalize_space(value: str) -> str:
@@ -226,29 +230,60 @@ def parse_da_code(value: Any) -> int | None:
 
 def clean_numeric(value: Any) -> float | None:
     """Normalize numeric nutrient cells while preserving unknown values as NULL."""
-    if is_blank(value):
-        return None
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
+    cleaned_value, _note = clean_numeric_with_note(value)
+    return cleaned_value
 
-    text = normalize_space(str(value)).lower()
-    if text in NULL_NUMERIC_TOKENS:
+
+def parse_below_limit_note(text: str, raw_text: str) -> dict[str, Any] | None:
+    if not text.startswith("<"):
         return None
+
+    limit_text = text[1:].strip()
+    if limit_text.startswith("."):
+        limit_text = f"0{limit_text}"
+
+    try:
+        limit_value = float(limit_text)
+    except ValueError:
+        limit_value = None
+
+    return {
+        "raw": raw_text,
+        "qualifier": "lt",
+        "limit": limit_value,
+    }
+
+
+def clean_numeric_with_note(value: Any) -> tuple[float | None, dict[str, Any] | None]:
+    """Return the numeric value plus optional source marker metadata."""
+    if is_blank(value):
+        return None, None
+    if isinstance(value, bool):
+        return None, None
+    if isinstance(value, (int, float)):
+        return float(value), None
+
+    raw_text = normalize_space(str(value))
+    text = raw_text.lower()
+    if text in NULL_NUMERIC_TOKENS:
+        return None, None
     if text in TRACE_NUMERIC_TOKENS:
-        return TRACE_NUMERIC_VALUE
+        return BELOW_LIMIT_CALC_VALUE, {
+            "raw": raw_text,
+            "qualifier": "trace",
+            "limit": None,
+        }
     if text.startswith("<"):
-        return TRACE_NUMERIC_VALUE
+        return BELOW_LIMIT_CALC_VALUE, parse_below_limit_note(text, raw_text)
 
     compact = text.replace(" ", "")
     if "," in compact and "." not in compact:
         compact = compact.replace(",", ".")
 
     try:
-        return float(compact)
+        return float(compact), None
     except ValueError:
-        return None
+        return None, None
 
 
 def normalize_fraction_text(text: str) -> str:
@@ -301,9 +336,9 @@ def clean_quantity(value: Any) -> float | None:
     if text in NULL_NUMERIC_TOKENS:
         return None
     if text in TRACE_NUMERIC_TOKENS:
-        return TRACE_NUMERIC_VALUE
+        return BELOW_LIMIT_CALC_VALUE
     if text.startswith("<"):
-        return TRACE_NUMERIC_VALUE
+        return BELOW_LIMIT_CALC_VALUE
 
     parsed = parse_fractional_number(text)
     return parsed
@@ -444,7 +479,14 @@ def upsert_food(
     update_columns = [col for col in FOOD_COLUMNS if col != "da_code"]
     # COALESCE prevents blank Excel cells from deleting useful DB values.
     update_assignments = ", ".join(
-        [f"{col} = COALESCE(new.{col}, foods.{col})" for col in update_columns]
+        [
+            (
+                f"{col} = new.{col}"
+                if col == "nutrient_value_notes"
+                else f"{col} = COALESCE(new.{col}, foods.{col})"
+            )
+            for col in update_columns
+        ]
         + ["updated_at = CURRENT_TIMESTAMP"]
     )
 
@@ -608,11 +650,26 @@ def process_sheet(
                     else None
                 ),
             }
+            nutrient_value_notes: dict[str, dict[str, Any]] = {}
             for numeric_col in NUMERIC_COLUMNS:
                 if numeric_col in column_lookup:
-                    food_row[numeric_col] = clean_numeric(row[column_lookup[numeric_col]])
+                    cleaned_value, note = clean_numeric_with_note(
+                        row[column_lookup[numeric_col]]
+                    )
+                    food_row[numeric_col] = cleaned_value
+                    if note:
+                        nutrient_value_notes[numeric_col] = note
+                        if note["qualifier"] == "lt":
+                            stats.below_limit_values += 1
+                        elif note["qualifier"] == "trace":
+                            stats.trace_values += 1
                 else:
                     food_row[numeric_col] = None
+            food_row["nutrient_value_notes"] = (
+                json.dumps(nutrient_value_notes, sort_keys=True)
+                if nutrient_value_notes
+                else None
+            )
 
             if args.verbose and len(stats.food_preview) < 5:
                 stats.food_preview.append(dict(food_row))
@@ -756,6 +813,8 @@ def main() -> int:
     print(f"  foods updated:  {stats.foods_updated}")
     print(f"  foods skipped:  {stats.foods_skipped}")
     print(f"  own-subcategory foods: {stats.self_subcategory_foods}")
+    print(f"  below-limit nutrient values: {stats.below_limit_values}")
+    print(f"  trace nutrient values:       {stats.trace_values}")
     print(f"  warnings:       {stats.warnings}")
 
     if args.limit is not None:

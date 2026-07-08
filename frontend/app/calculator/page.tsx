@@ -39,18 +39,21 @@ type MealEntry = {
   grams: number;
 };
 
+type CalcNutrientField = "kcal" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g";
+
+type NutrientValueNote = {
+  raw: string;
+  qualifier: "lt" | "trace";
+  limit: number | null;
+};
+
 type CalcItem = {
   food_id: number;
   name: string;
   grams: number;
   factor: number | null;
-  nutrients: {
-    kcal: number;
-    protein_g: number;
-    carbs_g: number;
-    fat_g: number;
-    fiber_g: number;
-  };
+  nutrients: Record<CalcNutrientField, number>;
+  nutrient_value_notes: Partial<Record<CalcNutrientField, NutrientValueNote>> | null;
   incomplete_data: boolean;
   error: string | null;
 };
@@ -85,6 +88,19 @@ const LANG_KEY = "app_lang";
 
 function formatNumber(value: number): string {
   return value.toFixed(2);
+}
+
+function formatCalcNutrient(item: CalcItem, field: CalcNutrientField): string {
+  const value = formatNumber(item.nutrients[field]);
+  const note = item.nutrient_value_notes?.[field];
+  return note ? `${value} (${note.raw} source)` : value;
+}
+
+function hasBelowLimitNotes(items: CalcItem[]): boolean {
+  return items.some((item) => {
+    const notes = item.nutrient_value_notes;
+    return notes ? Object.keys(notes).length > 0 : false;
+  });
 }
 
 function findMealEntry(
@@ -490,6 +506,11 @@ export default function CalculatorPage() {
               Warning: some nutrients are missing, totals may be underestimated.
             </p>
           )}
+          {hasBelowLimitNotes(calcResult.items) && (
+            <p style={{ color: "darkorange" }}>
+              Some source values were below reporting limits and were calculated as 0.
+            </p>
+          )}
           {calcGroups.map((group) => {
             const groupTotals = sumCalcItems(group.items);
 
@@ -550,19 +571,19 @@ export default function CalculatorPage() {
                               : item.factor.toFixed(4)}
                           </td>
                           <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatNumber(item.nutrients.kcal)}
+                            {formatCalcNutrient(item, "kcal")}
                           </td>
                           <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatNumber(item.nutrients.protein_g)}
+                            {formatCalcNutrient(item, "protein_g")}
                           </td>
                           <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatNumber(item.nutrients.carbs_g)}
+                            {formatCalcNutrient(item, "carbs_g")}
                           </td>
                           <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatNumber(item.nutrients.fat_g)}
+                            {formatCalcNutrient(item, "fat_g")}
                           </td>
                           <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatNumber(item.nutrients.fiber_g)}
+                            {formatCalcNutrient(item, "fiber_g")}
                           </td>
                         </tr>
                       );
