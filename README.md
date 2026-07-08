@@ -56,9 +56,11 @@ nutrition-data-platform/
 |   |   |-- FoodsFinal_sample.xlsx
 |   |
 |   |-- migrations/
+|   |   |-- 000_initial_schema.sql
 |   |   |-- 001_add_ro_columns.sql
 |   |
 |   |-- scripts/
+|   |   |-- apply_migrations.py
 |   |   |-- import_data_db.py
 |   |   |-- mark_own_subcategories.py
 |   |   |-- translation/
@@ -152,6 +154,12 @@ Create the local backend environment file:
 Copy-Item .env.example .env
 ```
 
+Apply database migrations:
+
+```powershell
+python scripts\apply_migrations.py
+```
+
 Run the backend:
 
 ```powershell
@@ -204,7 +212,7 @@ http://localhost:3000
 
 ## Import The Sample Data
 
-Make sure the database container is running first.
+Make sure the database container is running and migrations have been applied first.
 
 From the project root, run a dry-run import:
 
@@ -264,9 +272,10 @@ subcategories.name_ro
 foods.food_description_ro
 ```
 
-The migration file is:
+The migration files are:
 
 ```text
+backend/migrations/000_initial_schema.sql
 backend/migrations/001_add_ro_columns.sql
 ```
 
@@ -324,7 +333,8 @@ Meal nutrition calculator.
 /admin/add-food
 ```
 
-Admin page for adding a food item.
+Local admin page for adding a food item. It is not linked in the main navigation.
+When using it, enter the `ADMIN_TOKEN` value from `backend/.env`.
 
 ## Environment Files
 
@@ -343,6 +353,9 @@ frontend/.env.local
 ```
 
 This keeps database credentials, admin tokens, and local machine settings out of Git.
+
+Admin tokens must stay server/local only. Do not expose them with a
+`NEXT_PUBLIC_` prefix in frontend environment files.
 
 ## Git Ignore Policy
 
@@ -368,6 +381,14 @@ Start database:
 
 ```powershell
 docker compose -f infra/docker-compose.yml up -d
+```
+
+Apply migrations:
+
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+python scripts\apply_migrations.py
 ```
 
 Stop database:

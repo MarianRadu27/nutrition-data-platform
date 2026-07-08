@@ -29,6 +29,15 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_optional(name: str) -> str | None:
+    """Read a string env var while treating empty values as missing."""
+    value = os.getenv(name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped if stripped else None
+
+
 def get_db_config() -> dict[str, Any]:
     """Build one shared MySQL connection config from environment variables."""
     return {
@@ -48,9 +57,9 @@ def get_connection() -> pymysql.connections.Connection:
     return pymysql.connect(**get_db_config())
 
 
-def get_admin_token() -> str:
+def get_admin_token() -> str | None:
     """Return the local admin token used by the add-food endpoint."""
-    return _env_str("ADMIN_TOKEN", "change-me-local-admin-token")
+    return _env_optional("ADMIN_TOKEN")
 
 
 def get_frontend_origins() -> list[str]:

@@ -3,8 +3,6 @@
 import { FormEvent, useState } from "react";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
-// This token is for local development convenience; real deployments need stronger auth.
-const DEFAULT_ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "";
 
 type AdminResponse = {
   da_code: number;
@@ -17,7 +15,7 @@ type AdminResponse = {
 
 export default function AdminAddFoodPage() {
   // The admin form allows either existing ids or new names for Category and Food.
-  const [adminToken, setAdminToken] = useState(DEFAULT_ADMIN_TOKEN);
+  const [adminToken, setAdminToken] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [categoryNameRo, setCategoryNameRo] = useState("");
@@ -76,7 +74,6 @@ export default function AdminAddFoodPage() {
 
     try {
       const response = await fetch(`${API_BASE}/api/admin/foods`, {
-        // X-Admin-Token is checked by the FastAPI dependency on the admin endpoint.
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -102,12 +99,14 @@ export default function AdminAddFoodPage() {
   return (
     <main style={{ padding: 24, maxWidth: 900, fontFamily: "sans-serif" }}>
       <h1>Admin - Add Food</h1>
-      <p>Local dev only. This page sends X-Admin-Token on submit.</p>
 
       <form onSubmit={handleSubmit} style={{ display: "grid", gap: 10 }}>
         <label>
           Admin token
           <input
+            required
+            type="password"
+            autoComplete="current-password"
             value={adminToken}
             onChange={(event) => setAdminToken(event.target.value)}
             style={{ display: "block", width: "100%", padding: 8 }}

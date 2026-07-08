@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import secrets
 from typing import Any, Iterator
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
@@ -16,6 +18,7 @@ BASE_NUTRIENTS = [
     ("fat_g", "fat_g"),
     ("fiber_g", "fiber_g"),
 ]
+logger = logging.getLogger(__name__)
 
 
 def _as_float(value: Any) -> float:
@@ -44,7 +47,12 @@ def require_admin_token(
 ) -> None:
     """Protect local admin endpoints with a simple shared token."""
     expected = db.get_admin_token()
-    if not x_admin_token or x_admin_token != expected:
+    if expected is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Admin token is not configured",
+        )
+    if not x_admin_token or not secrets.compare_digest(x_admin_token, expected):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or missing admin token",
@@ -319,7 +327,8 @@ def create_food_admin(
         raise
     except Exception as exc:
         connection.rollback()
+        logger.exception("Failed to create food")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create food: {exc}",
+            detail="Failed to create food",
         ) from exc

@@ -2,3 +2,6 @@ fastapi[standard]
 pymysql
 python-dotenv
 pydantic
+cryptography
+pandas
+openpyxl
