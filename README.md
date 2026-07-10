@@ -64,6 +64,7 @@ nutrition-data-platform/
 |   |   |-- apply_migrations.py
 |   |   |-- import_data_db.py
 |   |   |-- mark_own_subcategories.py
+|   |   |-- smoke_test.py
 |   |   |-- translation/
 |   |       |-- apply_translations_to_foods_final.py
 |   |       |-- export_chatgpt_batch.py
@@ -428,6 +429,18 @@ Build frontend:
 ```powershell
 cd frontend
 npm run build
+```
+
+Run backend smoke test:
+
+```powershell
+python backend\scripts\smoke_test.py
+```
+
+Run backend smoke test plus frontend build:
+
+```powershell
+python backend\scripts\smoke_test.py --with-frontend-build
 ```
 
 ## Project Status
