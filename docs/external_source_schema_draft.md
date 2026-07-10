@@ -250,6 +250,7 @@ id
 data_source_id
 source_nutrient_code
 source_nutrient_name
+source_nutrient_name_ro
 source_standard_tag
 unit
 component_group
@@ -263,6 +264,7 @@ NEVO examples:
 ```text
 source_nutrient_code -> Nutrient-code
 source_nutrient_name -> Component
+source_nutrient_name_ro -> Romanian translation, nullable
 source_standard_tag -> NULL for now
 unit -> Eenheid/Unit
 component_group -> Component group
@@ -273,6 +275,7 @@ ANSES examples:
 ```text
 source_nutrient_code -> ORIGCPCD
 source_nutrient_name -> const_nom_eng
+source_nutrient_name_ro -> Romanian translation, nullable
 source_standard_tag -> INFDSTAG
 unit -> parsed from const_nom_eng
 component_group -> NULL for now
