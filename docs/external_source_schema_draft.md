@@ -13,7 +13,9 @@ The external-source model should support:
 - source-specific categories and food names
 - many nutrients per food
 - missing nutrient values stored as missing values, not zero
+- source raw nutrient values and value qualifiers such as `less_than` and `trace`
 - source and reference metadata for nutrient values
+- source-specific nutrients mapped to project-owned canonical nutrients
 - future mapping between similar foods from different sources
 
 The model should avoid forcing all datasets into the current `foods` table too early. Different sources have different structures, units, naming conventions, and reference systems.
@@ -30,6 +32,8 @@ data_sources
     |-- source_foods
     |
     |-- source_nutrients
+    |        |
+    |        |-- canonical_nutrients
     |
     |-- source_references
 
@@ -64,11 +68,24 @@ Example nutrients:
 ```text
 source_nutrients
 
-id | data_source_id | source_nutrient_code | source_nutrient_name | unit
-1  | 1              | ENERCC               | Energy kcal          | kcal
-2  | 1              | PROT                 | Protein total        | g
-3  | 1              | FAT                  | Fat total            | g
-4  | 1              | FIBT                 | Fibre dietary total  | g
+id | data_source_id | source_nutrient_code | source_nutrient_name | unit | canonical_nutrient_id
+1  | 1              | ENERCC               | Energy kcal          | kcal | 1
+2  | 1              | PROT                 | Protein total        | g    | 2
+3  | 1              | FAT                  | Fat total            | g    | 4
+4  | 1              | FIBT                 | Fibre dietary total  | g    | 5
+```
+
+Example canonical nutrients:
+
+```text
+canonical_nutrients
+
+id | canonical_code | name_en      | default_unit
+1  | energy_kcal    | Energy       | kcal
+2  | protein_g      | Protein      | g
+3  | carbohydrate_g | Carbohydrate | g
+4  | fat_g          | Fat          | g
+5  | fiber_g        | Fiber        | g
 ```
 
 Example references:
@@ -86,11 +103,12 @@ Example nutrient values:
 ```text
 source_food_nutrient_values
 
-id | source_food_id | source_nutrient_id | value | unit | basis    | reference_id
-1  | 1              | 1                  | 80    | kcal | per_100g | 2
-2  | 1              | 2                  | 2     | g    | per_100g | 1
-3  | 1              | 3                  | 0.1   | g    | per_100g | 1
-4  | 1              | 4                  | 1.8   | g    | per_100g | 1
+id | source_food_id | source_nutrient_id | raw_value | value | value_qualifier | unit | basis    | reference_id
+1  | 1              | 1                  | 80        | 80    |                 | kcal | per_100g | 2
+2  | 1              | 2                  | 2         | 2     |                 | g    | per_100g | 1
+3  | 1              | 3                  | 0.1       | 0.1   |                 | g    | per_100g | 1
+4  | 1              | 4                  | 1.8       | 1.8   |                 | g    | per_100g | 1
+5  | 1              | 5                  | < 0,01    | 0.01  | less_than       | g    | per_100g | 1
 ```
 
 This means:
@@ -175,9 +193,9 @@ Purpose:
 
 This table keeps source foods separate from the current user-facing `foods` table. It preserves the original source identity and prevents premature deduplication.
 
-### nutrients
+### canonical_nutrients
 
-Stores nutrient definitions.
+Stores project-owned nutrient definitions.
 
 Suggested fields:
 
@@ -188,6 +206,7 @@ name_en
 name_ro
 default_unit
 nutrient_group
+description
 created_at
 updated_at
 ```
@@ -195,19 +214,30 @@ updated_at
 Examples:
 
 ```text
-ENERGY_KCAL
-PROTEIN
-CARBOHYDRATE
-FAT
-FIBRE
-WATER
-SODIUM
-IRON
+energy_kcal
+protein_g
+carbohydrate_g
+fat_g
+fiber_g
+sugar_g
+salt_g
+sodium_mg
+water_g
 ```
 
 Purpose:
 
-This table gives the project a future standard vocabulary for nutrients. Source-specific nutrient codes can be mapped to these canonical nutrients.
+This table gives the project a stable vocabulary for nutrients. Source-specific nutrient codes can be mapped to these canonical nutrients.
+
+For example:
+
+```text
+ANSES PROCNT / ORIGCPCD 25000 -> protein_g
+NEVO PROT                     -> protein_g
+```
+
+The calculator should eventually depend on canonical nutrient codes such as
+`protein_g`, not directly on source-specific codes such as `PROCNT` or `PROT`.
 
 ### source_nutrients
 
@@ -220,6 +250,7 @@ id
 data_source_id
 source_nutrient_code
 source_nutrient_name
+source_standard_tag
 unit
 component_group
 canonical_nutrient_id
@@ -232,8 +263,19 @@ NEVO examples:
 ```text
 source_nutrient_code -> Nutrient-code
 source_nutrient_name -> Component
+source_standard_tag -> NULL for now
 unit -> Eenheid/Unit
 component_group -> Component group
+```
+
+ANSES examples:
+
+```text
+source_nutrient_code -> ORIGCPCD
+source_nutrient_name -> const_nom_eng
+source_standard_tag -> INFDSTAG
+unit -> parsed from const_nom_eng
+component_group -> NULL for now
 ```
 
 Purpose:
@@ -241,6 +283,16 @@ Purpose:
 This table separates source-specific nutrient definitions from the future canonical nutrient model.
 
 For example, NEVO has `ENERCC`, while another source may use another code for kcal. Both can eventually map to the same canonical nutrient.
+
+Important source-code decisions:
+
+- ANSES `ORIGCPCD` should be stored as `source_nutrient_code`.
+- ANSES `INFDSTAG` should be stored as `source_standard_tag`.
+- ANSES `INFDSTAG` should not be treated as unique because values such as
+  `ENERC` and `PROCNT` repeat.
+- NEVO `Nutrient-code` should be stored as `source_nutrient_code`.
+- NEVO does not currently provide an equivalent standard tag in the profiled
+  nutrient dictionary.
 
 ### source_references
 
@@ -278,7 +330,9 @@ Suggested fields:
 id
 source_food_id
 source_nutrient_id
+raw_value
 value
+value_qualifier
 unit
 basis
 reference_id
@@ -291,7 +345,9 @@ NEVO examples:
 ```text
 source_food_id -> source_foods.id for a NEVO-code
 source_nutrient_id -> source_nutrients.id for a Nutrient-code
+raw_value -> original source text, when available
 value -> Gehalte/Value
+value_qualifier -> NULL, less_than, trace, estimated, etc.
 unit -> Eenheid/Unit
 basis -> per 100g or per 100ml
 reference_id -> source_references.id
@@ -307,6 +363,10 @@ One row means:
 one source food + one source nutrient + one value
 ```
 
+The `raw_value` field preserves the source representation. The numeric `value`
+field is for numeric calculations and comparison. The `value_qualifier` field
+stores meaning that would otherwise be lost, such as "below limit" or "trace".
+
 ## Handling Missing Values
 
 Missing nutrient values should be stored as `NULL`.
@@ -321,6 +381,38 @@ zero = known measured/reported zero
 ```
 
 These are different meanings and should not be mixed.
+
+## Handling Less-Than and Trace Values
+
+ANSES/Ciqual contains valid non-numeric nutrient values such as:
+
+```text
+< 0,01
+< 1
+traces
+```
+
+These should not be treated as ordinary missing values.
+
+Suggested storage:
+
+```text
+raw_value = "< 0,01"
+value = 0.01
+value_qualifier = "less_than"
+```
+
+For trace values:
+
+```text
+raw_value = "traces"
+value = NULL
+value_qualifier = "trace"
+```
+
+Calculator behavior can later decide whether `less_than` or `trace` values
+should count as zero, a limit value, or another reviewed rule. The import layer
+should preserve the source information first.
 
 ## Handling `per 100g` and `per 100ml`
 
@@ -405,14 +497,35 @@ This would allow the application to group equivalent foods while preserving each
 
 ## Recommended Import Order
 
-For NEVO, the future import should happen in this order:
+For each source, the future import should happen in this order:
 
-1. Insert `data_sources` row for NEVO.
-2. Import `source_foods` from `NEVO2025_v9.0.csv`.
-3. Import `source_nutrients` from `NEVO2025_v9.0_Nutrienten_Nutrients.csv`.
-4. Import `source_references` from source/reference fields in `NEVO2025_v9.0_Details.csv`.
-5. Import `source_food_nutrient_values` from `NEVO2025_v9.0_Details.csv`.
-6. Run validation checks after import.
+1. Insert `data_sources` row.
+2. Insert or validate relevant `canonical_nutrients`.
+3. Import `source_foods`.
+4. Import `source_nutrients`.
+5. Link source nutrients to canonical nutrients where the mapping has been
+   reviewed.
+6. Import `source_references` if the source provides references.
+7. Import `source_food_nutrient_values`.
+8. Run validation checks after import.
+
+For NEVO:
+
+```text
+source_foods -> NEVO2025_v9.0.csv
+source_nutrients -> NEVO2025_v9.0_Nutrienten_Nutrients.csv
+source_references -> source/reference fields in NEVO2025_v9.0_Details.csv
+source_food_nutrient_values -> NEVO2025_v9.0_Details.csv
+```
+
+For ANSES/Ciqual:
+
+```text
+source_foods -> food composition sheet
+source_nutrients -> INFOODS codes sheet
+source_food_nutrient_values -> food composition sheet nutrient columns
+source_references -> not yet designed; review source documentation first
+```
 
 ## Recommended Validation Checks
 
@@ -427,8 +540,23 @@ After importing NEVO, validate:
 - missing values remain `NULL`
 - `per 100g` and `per 100ml` are preserved
 
+After importing ANSES/Ciqual, validate:
+
+- number of imported foods equals 3484
+- number of imported source nutrients equals 74 from `INFOODS codes`
+- `Jones factor` is not imported as a normal source nutrient unless explicitly
+  modeled as metadata
+- ANSES `ORIGCPCD` values are used as source nutrient codes
+- ANSES `INFDSTAG` values are preserved as `source_standard_tag`
+- values such as `< 0,01` and `traces` preserve their raw value and qualifier
+- calculator-critical mappings match `docs/canonical_nutrient_mapping_draft.md`
+
 ## Current Decision
 
 The current calculator should continue using the existing local dataset.
 
 External sources should be imported into separate tables first. After profiling, validation, and review, the project can decide how to expose those sources in the UI.
+
+The next implementation step should not be a full import yet. The safer next
+step is to turn this draft into a small migration for external-source tables
+after reviewing the schema fields above.
