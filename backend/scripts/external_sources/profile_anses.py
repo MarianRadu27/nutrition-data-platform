@@ -7,7 +7,9 @@ and prints useful information about their structure and data quality.
 
 from __future__ import annotations
 
+from collections import Counter
 from pathlib import Path
+import re
 
 from openpyxl import load_workbook
 
@@ -93,6 +95,19 @@ def split_metadata_and_nutrient_columns(
     nutrient_columns = columns[first_nutrient_column_index:]
 
     return metadata_columns, nutrient_columns
+
+
+def normalize_nutrient_name(value) -> str:
+    """Normalize source nutrient names for cross-sheet comparisons."""
+    if value is None:
+        return ""
+
+    normalized_value = str(value).replace("\n", " ")
+    normalized_value = re.sub(r"\s*/\s*", " ", normalized_value)
+    normalized_value = re.sub(r"\(\s*", "(", normalized_value)
+    normalized_value = re.sub(r"\s*\)", ")", normalized_value)
+    normalized_value = re.sub(r"\s+", " ", normalized_value)
+    return normalized_value.strip().lower()
 
 
 def print_food_code_uniqueness(
@@ -310,6 +325,89 @@ def print_all_nutrient_missing_values(
     print("=" * 30)
 
 
+def print_infoods_codes_profile(
+    worksheet,
+    nutrient_columns: list[str],
+) -> None:
+    """Profile the INFOODS mapping sheet."""
+    infoods_headers = get_columns(worksheet)
+    infoods_rows = list(worksheet.iter_rows(min_row=2, values_only=True))
+
+    infoods_by_name = {
+        normalize_nutrient_name(infoods_row[2]): infoods_row
+        for infoods_row in infoods_rows
+    }
+    food_nutrients_by_name = {
+        normalize_nutrient_name(nutrient_column): nutrient_column
+        for nutrient_column in nutrient_columns
+    }
+
+    food_nutrients_without_infoods = [
+        nutrient_column
+        for nutrient_column in nutrient_columns
+        if normalize_nutrient_name(nutrient_column) not in infoods_by_name
+    ]
+    infoods_rows_without_food_nutrient = [
+        infoods_row
+        for infoods_row in infoods_rows
+        if normalize_nutrient_name(infoods_row[2]) not in food_nutrients_by_name
+    ]
+
+    infoods_codes = [
+        infoods_row[0]
+        for infoods_row in infoods_rows
+        if infoods_row[0] not in (None, "")
+    ]
+    repeated_infoods_codes = [
+        (code, count)
+        for code, count in Counter(infoods_codes).items()
+        if count > 1
+    ]
+    empty_infoods_code_rows = [
+        infoods_row
+        for infoods_row in infoods_rows
+        if infoods_row[0] in (None, "")
+    ]
+
+    print("INFOODS codes profile")
+    print("=" * 30)
+    print(f"Sheet name: {worksheet.title}")
+    print(f"Total rows: {worksheet.max_row}")
+    print(f"Total columns: {worksheet.max_column}")
+    print(f"Headers: {infoods_headers}")
+    print(f"Data rows: {len(infoods_rows)}")
+    print(f"Food nutrient columns: {len(nutrient_columns)}")
+    print()
+    print("First INFOODS rows")
+    for row in infoods_rows[:10]:
+        print(f"- {row}")
+
+    print()
+    print(
+        "Food nutrient columns without INFOODS row: "
+        f"{len(food_nutrients_without_infoods)}"
+    )
+    for nutrient_column in food_nutrients_without_infoods:
+        print(f"- {nutrient_column}")
+
+    print(
+        "INFOODS rows without food nutrient column: "
+        f"{len(infoods_rows_without_food_nutrient)}"
+    )
+    for infoods_row in infoods_rows_without_food_nutrient[:20]:
+        print(f"- {infoods_row}")
+
+    print(f"Rows with empty INFDSTAG: {len(empty_infoods_code_rows)}")
+    for infoods_row in empty_infoods_code_rows:
+        print(f"- {infoods_row}")
+
+    print(f"Repeated non-empty INFDSTAG codes: {len(repeated_infoods_codes)}")
+    for code, count in repeated_infoods_codes:
+        print(f"- {code}: {count}")
+
+    print("=" * 30)
+
+
 def main() -> int:
     """Run the ANSES profiling checks."""
     if not MAIN_FILE.exists():
@@ -324,6 +422,7 @@ def main() -> int:
     workbook_sheetnames = workbook.sheetnames
 
     worksheet = workbook["food composition"]
+    infoods_worksheet = workbook["INFOODS codes"]
 
     columns = get_columns(worksheet)
 
@@ -340,6 +439,7 @@ def main() -> int:
     print_category_profile(worksheet, columns)
     print_all_nutrient_missing_values(worksheet, columns, nutrient_columns)
     print_non_numeric_values(worksheet, columns, nutrient_columns)
+    print_infoods_codes_profile(infoods_worksheet, nutrient_columns)
 
     return 0
 

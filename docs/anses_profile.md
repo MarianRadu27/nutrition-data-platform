@@ -34,10 +34,11 @@ food composition
 INFOODS codes
 ```
 
-The current profiling focuses on:
+The current profiling covers:
 
 ```text
 food composition
+INFOODS codes
 ```
 
 ## Food Composition Sheet
@@ -285,6 +286,85 @@ Important observations:
 - Core macronutrients are substantially more complete than several vitamins, fatty acids, and carbohydrate subtypes.
 - A present source value is not necessarily directly numeric.
 
+## INFOODS Codes Sheet
+
+The workbook also contains an `INFOODS codes` sheet.
+
+Observed profile:
+
+```text
+Rows: 75
+Columns: 3
+Data rows: 74
+Headers: INFDSTAG, ORIGCPCD, const_nom_eng
+```
+
+The 74 data rows map ANSES nutrient names to source nutrient codes and INFOODS
+tags.
+
+Example rows:
+
+```text
+INFDSTAG | ORIGCPCD | const_nom_eng
+ENERC    | 327      | Energy, Regulation EU No 1169/2011 (kJ/100g)
+ENERC    | 328      | Energy, Regulation EU No 1169/2011 (kcal/100g)
+WATER    | 400      | Water (g/100g)
+ASH      | 10000    | Ash (g/100g)
+         | 10004    | Salt (g/100g)
+NA       | 10110    | Sodium (mg/100g)
+```
+
+Important mapping result:
+
+```text
+Food composition nutrient columns: 75
+INFOODS data rows: 74
+Food nutrient columns without INFOODS row: 1
+INFOODS rows without food nutrient column: 0
+```
+
+The only `food composition` nutrient column without an `INFOODS codes` row is:
+
+```text
+Jones factor
+```
+
+This supports the earlier interpretation that `Jones factor` should be treated
+as metadata, not as a normal nutrient measurement.
+
+The `INFOODS codes` sheet is not in the same order as the nutrient columns in
+`food composition`. A future importer must map by normalized nutrient name, not
+by position.
+
+Observed code behavior:
+
+```text
+Rows with empty INFDSTAG: 1
+Repeated non-empty INFDSTAG codes: 2
+```
+
+The empty `INFDSTAG` row is:
+
+```text
+ORIGCPCD = 10004
+const_nom_eng = Salt (g/100g)
+```
+
+Repeated `INFDSTAG` values:
+
+```text
+ENERC: 4
+PROCNT: 2
+```
+
+Interpretation:
+
+- `ORIGCPCD` appears to be the better ANSES-specific unique nutrient code.
+- `INFDSTAG` should be preserved as the INFOODS tag when present.
+- `INFDSTAG` should not be treated as unique.
+- nutrient units can likely be parsed from `const_nom_eng`, but this should be
+  done with controlled parsing and review.
+
 ## Numeric Representation
 
 Most nutrient values are stored in the workbook as text rather than as native Excel numbers.
@@ -375,6 +455,9 @@ alim_grp_nom_eng -> source_foods.category_1
 alim_ssgrp_nom_eng -> source_foods.category_2
 alim_ssssgrp_nom_eng -> source_foods.category_3
 nutrient columns -> source_food_nutrient_values.value
+INFOODS codes.ORIGCPCD -> source_nutrients.source_nutrient_code
+INFOODS codes.const_nom_eng -> source_nutrients.source_nutrient_name
+INFOODS codes.INFDSTAG -> preserved INFOODS tag/source metadata
 ```
 
 ANSES/Ciqual should be imported into external-source tables, not directly into the current `foods` table.
@@ -394,9 +477,8 @@ The current calculator should continue using the existing local Appendix H datas
 
 Recommended next checks:
 
-1. Inspect the `INFOODS codes` sheet.
-2. Determine how its nutrient codes map to the 75 composition columns.
-3. Check whether nutrient names and units can be parsed consistently.
-4. Review the ANSES documentation for the exact meaning of `<` values and `traces`.
-5. Compare the ANSES/Ciqual nutrient structure with the NEVO nutrient model.
-6. Define the canonical mapping needed by the external-source schema.
+1. Review the ANSES documentation for the exact meaning of `<` values and `traces`.
+2. Decide how the external-source schema should preserve source qualifiers, raw values, and INFOODS tags.
+3. Compare the ANSES/Ciqual nutrient structure with the NEVO nutrient model.
+4. Define the canonical mapping needed by the external-source schema.
+5. Only after that, design the external-source migrations and import scripts.

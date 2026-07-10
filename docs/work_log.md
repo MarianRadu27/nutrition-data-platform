@@ -936,7 +936,14 @@ numeric value.
 Current ANSES status:
 
 - `food composition` sheet profiling is complete enough for documentation;
-- `INFOODS codes` sheet is not yet profiled;
+- `INFOODS codes` sheet is profiled;
+- `INFOODS codes` has 74 data rows for 75 nutrient columns;
+- every INFOODS row maps to a food composition nutrient column;
+- the only food composition nutrient column without an INFOODS row is
+  `Jones factor`;
+- `ORIGCPCD` appears to be the best ANSES-specific unique nutrient code;
+- `INFDSTAG` should be preserved as an INFOODS tag, but not treated as unique
+  because values such as `ENERC` and `PROCNT` repeat;
 - documentation has been updated in `docs/anses_profile.md`;
 - latest commit pushed was:
 
@@ -949,25 +956,22 @@ Current ANSES status:
 The next planned task is:
 
 ```text
-Profile the ANSES `INFOODS codes` sheet.
+Compare ANSES and NEVO nutrient structures before designing external-source tables.
 ```
 
 Recommended next steps:
 
-1. Open `profile_anses.py`.
-2. Add a function to inspect the `INFOODS codes` sheet.
-3. Print:
-   - sheet name;
-   - total rows;
-   - total columns;
-   - headers;
-   - first 10 rows.
-4. Determine whether `INFOODS codes` maps nutrient names to standardized
-   nutrient codes.
-5. Update `docs/anses_profile.md` with the findings.
-6. Only after that, compare ANSES nutrient codes to NEVO nutrient codes.
+1. Review the ANSES documentation for the exact meaning of `<` values and
+   `traces`.
+2. Compare ANSES nutrient codes/names/units with NEVO nutrient codes/names/units.
+3. Decide how the external-source schema should preserve:
+   - raw source values;
+   - value qualifiers such as `less_than` and `trace`;
+   - source-specific nutrient codes;
+   - INFOODS tags.
+4. Only after that, design the external-source migrations and import scripts.
 
-Do not start import tables yet. Finish profiling and mapping first.
+Do not start import tables until profiling and mapping decisions are clear.
 
 ## Suggested Next Conversation Prompt
 
@@ -982,5 +986,5 @@ Romanian, give small steps, and let me write the code unless I ask you to edit.
 Then ask:
 
 ```text
-Hai sa continuam cu profilarea sheet-ului INFOODS codes din ANSES.
+Hai sa continuam cu comparatia dintre nutrientii ANSES si NEVO.
 ```
