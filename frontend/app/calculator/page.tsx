@@ -1,658 +1,698 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
-type Lang = "en" | "ro";
+type SourceCode = "NEVO" | "ANSES_CIQUAL";
 
-type FoodSearchItem = {
+type ExternalFood = {
   id: number;
-  category_id: number | null;
-  subcategory_id: number | null;
+  data_source_code: string;
+  source_food_code: string;
   name_display: string;
   category_name_display: string | null;
-  subcategory_name_display: string | null;
-  quantity: number | null;
-  measure: string | null;
-  wt_g: number | null;
+  basis: string | null;
 };
 
-type Category = {
+type ExternalFoodsResponse = {
+  items: ExternalFood[];
+  limit: number;
+  offset: number;
+  count: number;
+};
+
+type NutrientKey =
+  | "energy_kcal"
+  | "protein_g"
+  | "carbohydrate_g"
+  | "fat_g"
+  | "fiber_g";
+
+type ExternalNutrientValue = {
+  canonical_code: string | null;
+  canonical_name_display: string | null;
+  raw_value: string | null;
+  value: number | null;
+  value_qualifier: string | null;
+  unit: string | null;
+  basis: string | null;
+};
+
+type ExternalFoodNutrientsResponse = {
+  food: ExternalFood;
+  nutrients: ExternalNutrientValue[];
+};
+
+type MealItem = {
   id: number;
-  name: string;
-  name_ro: string | null;
-  name_display: string;
-};
-
-type Subcategory = {
-  id: number;
-  category_id: number;
-  name: string;
-  name_ro: string | null;
-  name_display: string;
-};
-
-type MealEntry = {
-  food_id: number;
-  category_name: string;
-  subcategory_name: string;
-  name: string;
+  food: ExternalFood;
   grams: number;
+  nutrients: Partial<Record<NutrientKey, ExternalNutrientValue>>;
 };
 
-type CalcNutrientField = "kcal" | "protein_g" | "carbs_g" | "fat_g" | "fiber_g";
-
-type NutrientValueNote = {
-  raw: string;
-  qualifier: "lt" | "trace";
-  limit: number | null;
-};
-
-type CalcItem = {
-  food_id: number;
-  name: string;
-  grams: number;
-  factor: number | null;
-  nutrients: Record<CalcNutrientField, number>;
-  nutrient_value_notes: Partial<Record<CalcNutrientField, NutrientValueNote>> | null;
-  incomplete_data: boolean;
-  error: string | null;
-};
-
-type CalcResponse = {
-  totals: {
-    kcal: number;
-    protein_g: number;
-    carbs_g: number;
-    fat_g: number;
-    fiber_g: number;
-  };
-  incomplete_data: boolean;
-  items: CalcItem[];
-};
-
-type CalcGroup = {
-  grams: number;
-  items: CalcItem[];
-};
-
-type NutrientTotals = {
-  kcal: number;
-  protein_g: number;
-  carbs_g: number;
-  fat_g: number;
-  fiber_g: number;
+type NutrientColumn = {
+  key: NutrientKey;
+  label: string;
+  unit: string;
 };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
-const LANG_KEY = "app_lang";
+const SEARCH_LIMIT = 25;
 
-function formatNumber(value: number): string {
-  return value.toFixed(2);
+const SOURCES: Array<{ code: SourceCode; label: string; detail: string }> = [
+  { code: "NEVO", label: "NEVO", detail: "Netherlands" },
+  { code: "ANSES_CIQUAL", label: "ANSES/Ciqual", detail: "France" },
+];
+
+const NUTRIENT_COLUMNS: NutrientColumn[] = [
+  { key: "energy_kcal", label: "Calorii", unit: "kcal" },
+  { key: "protein_g", label: "Proteine", unit: "g" },
+  { key: "carbohydrate_g", label: "Carbohidrați", unit: "g" },
+  { key: "fat_g", label: "Grăsimi", unit: "g" },
+  { key: "fiber_g", label: "Fibre", unit: "g" },
+];
+
+const shellStyle = {
+  margin: "0 auto",
+  maxWidth: 1180,
+  padding: "42px 24px 72px",
+} as const;
+
+const panelStyle = {
+  backgroundColor: "#ffffff",
+  border: "1px solid rgba(23, 33, 29, 0.12)",
+  borderRadius: 8,
+  boxShadow: "0 18px 42px rgba(32, 45, 39, 0.08)",
+} as const;
+
+const labelStyle = {
+  color: "#52645b",
+  display: "block",
+  fontSize: 13,
+  fontWeight: 800,
+  marginBottom: 7,
+} as const;
+
+const inputStyle = {
+  border: "1px solid rgba(23, 33, 29, 0.18)",
+  borderRadius: 8,
+  boxSizing: "border-box",
+  color: "#17211d",
+  fontSize: 15,
+  outline: "none",
+  padding: "12px 13px",
+  width: "100%",
+} as const;
+
+const primaryButtonStyle = {
+  backgroundColor: "#1f4f40",
+  border: "1px solid #1f4f40",
+  borderRadius: 8,
+  color: "#ffffff",
+  cursor: "pointer",
+  fontSize: 15,
+  fontWeight: 800,
+  padding: "12px 16px",
+} as const;
+
+const secondaryButtonStyle = {
+  backgroundColor: "#ffffff",
+  border: "1px solid rgba(23, 33, 29, 0.18)",
+  borderRadius: 8,
+  color: "#17211d",
+  cursor: "pointer",
+  fontSize: 14,
+  fontWeight: 800,
+  padding: "10px 13px",
+} as const;
+
+function formatNumber(value: number, digits = 2): string {
+  return value.toFixed(digits);
 }
 
-function formatCalcNutrient(item: CalcItem, field: CalcNutrientField): string {
-  const value = formatNumber(item.nutrients[field]);
-  const note = item.nutrient_value_notes?.[field];
-  return note ? `${value} (${note.raw} source)` : value;
+function scaleValue(value: number | null | undefined, grams: number): number {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return 0;
+  }
+  return value * (grams / 100);
 }
 
-function hasBelowLimitNotes(items: CalcItem[]): boolean {
-  return items.some((item) => {
-    const notes = item.nutrient_value_notes;
-    return notes ? Object.keys(notes).length > 0 : false;
+function buildNutrientMap(
+  nutrients: ExternalNutrientValue[],
+): Partial<Record<NutrientKey, ExternalNutrientValue>> {
+  const map: Partial<Record<NutrientKey, ExternalNutrientValue>> = {};
+
+  for (const nutrient of nutrients) {
+    const canonicalCode = nutrient.canonical_code as NutrientKey | null;
+    if (!canonicalCode) {
+      continue;
+    }
+
+    if (NUTRIENT_COLUMNS.some((column) => column.key === canonicalCode)) {
+      map[canonicalCode] = nutrient;
+    }
+  }
+
+  return map;
+}
+
+function hasSourceMarker(item: MealItem): boolean {
+  return NUTRIENT_COLUMNS.some((column) => {
+    const nutrient = item.nutrients[column.key];
+    return Boolean(nutrient?.value_qualifier && nutrient.raw_value);
   });
 }
 
-function findMealEntry(
-  mealItems: MealEntry[],
-  foodId: number,
-): MealEntry | undefined {
-  // The calculation result only has food_id, so we look up display details from the selected meal items.
-  return mealItems.find((item) => item.food_id === foodId);
-}
-
-function groupCalcItemsByGrams(items: CalcItem[]): CalcGroup[] {
-  // Each group becomes one results table for foods calculated with the same grams value.
-  const groupMap = new Map<number, CalcGroup>();
-
-  for (const item of items) {
-    let group = groupMap.get(item.grams);
-
-    if (!group) {
-      group = {
-        grams: item.grams,
-        items: [],
-      };
-
-      groupMap.set(item.grams, group);
-    }
-
-    group.items.push(item);
-  }
-
-  return Array.from(groupMap.values()).sort(
-    (firstGroup, secondGroup) => firstGroup.grams - secondGroup.grams,
-  );
-}
-
-function sumCalcItems(items: CalcItem[]): NutrientTotals {
-  // Sum all calculated nutrients in one grams group.
-  return items.reduce(
-    (totals, item) => ({
-      kcal: totals.kcal + item.nutrients.kcal,
-      protein_g: totals.protein_g + item.nutrients.protein_g,
-      carbs_g: totals.carbs_g + item.nutrients.carbs_g,
-      fat_g: totals.fat_g + item.nutrients.fat_g,
-      fiber_g: totals.fiber_g + item.nutrients.fiber_g,
-    }),
-    {
-      kcal: 0,
-      protein_g: 0,
-      carbs_g: 0,
-      fat_g: 0,
-      fiber_g: 0,
-    },
-  );
+function hasMissingNutrient(item: MealItem): boolean {
+  return NUTRIENT_COLUMNS.some((column) => !item.nutrients[column.key]);
 }
 
 export default function CalculatorPage() {
-  // Search state describes the picker; mealItems describes what the user selected.
-  const [lang, setLang] = useState<Lang>("en");
+  const [selectedSource, setSelectedSource] = useState<SourceCode>("NEVO");
   const [searchInput, setSearchInput] = useState("");
-  const [searchResults, setSearchResults] = useState<FoodSearchItem[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState("");
-  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
-  const [selectedFoodId, setSelectedFoodId] = useState("");
-  const [mealItems, setMealItems] = useState<MealEntry[]>([]);
-  const [calcResult, setCalcResult] = useState<CalcResponse | null>(null);
+  const [searchResults, setSearchResults] = useState<ExternalFood[]>([]);
+  const [mealItems, setMealItems] = useState<MealItem[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
-  const [loadingCalc, setLoadingCalc] = useState(false);
+  const [loadingFoodId, setLoadingFoodId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const calcGroups = calcResult ? groupCalcItemsByGrams(calcResult.items) : [];
 
-  useEffect(() => {
-    // Reuse the same language preference as the foods page.
-    const stored = window.localStorage.getItem(LANG_KEY);
-    if (stored === "en" || stored === "ro") {
-      setLang(stored);
-    }
-  }, []);
+  const totals = useMemo(() => {
+    return NUTRIENT_COLUMNS.reduce(
+      (acc, column) => {
+        acc[column.key] = mealItems.reduce((sum, item) => {
+          const nutrient = item.nutrients[column.key];
+          return sum + scaleValue(nutrient?.value, item.grams);
+        }, 0);
+        return acc;
+      },
+      {} as Record<NutrientKey, number>,
+    );
+  }, [mealItems]);
 
-  useEffect(() => {
-    window.localStorage.setItem(LANG_KEY, lang);
-  }, [lang]);
+  const sourceMarkersVisible = mealItems.some(hasSourceMarker);
+  const missingValuesVisible = mealItems.some(hasMissingNutrient);
 
-  useEffect(() => {
-    // Category labels change when lang changes, so they are reloaded by language.
-    async function loadCategories() {
-      const response = await fetch(`${API_BASE}/api/categories?lang=${lang}`);
-
-      if (!response.ok) {
-        throw new Error("Failed to load categories");
-      }
-
-      const data = (await response.json()) as Category[];
-      setCategories(data);
-    }
-
-    loadCategories().catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(message);
-    });
-  }, [lang]);
-
-  useEffect(() => {
-    if (!selectedCategoryId) {
-      // Food groups are only meaningful inside a selected Category.
-      setSubcategories([]);
-      setSelectedSubcategoryId("");
+  async function searchFoods(event: FormEvent) {
+    event.preventDefault();
+    const query = searchInput.trim();
+    if (!query) {
+      setError("Scrie numele unui aliment.");
+      setSearchResults([]);
       return;
     }
 
-    async function loadSubcategories() {
+    setLoadingSearch(true);
+    setError(null);
+
+    try {
+      const params = new URLSearchParams();
+      params.set("search", query);
+      params.set("lang", "ro");
+      params.set("limit", String(SEARCH_LIMIT));
+      params.set("offset", "0");
+
       const response = await fetch(
-        `${API_BASE}/api/categories/${selectedCategoryId}/subcategories?lang=${lang}`,
+        `${API_BASE}/api/external/sources/${selectedSource}/foods?${params.toString()}`,
       );
 
       if (!response.ok) {
-        throw new Error("Failed to load subcategories");
+        throw new Error("Căutarea nu a reușit.");
       }
 
-      const data = (await response.json()) as Subcategory[];
-      setSubcategories(data);
-    }
-
-    loadSubcategories().catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : "Unknown error";
+      const payload = (await response.json()) as ExternalFoodsResponse;
+      setSearchResults(payload.items);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Eroare necunoscută";
       setError(message);
-    });
-  }, [selectedCategoryId, lang]);
+      setSearchResults([]);
+    } finally {
+      setLoadingSearch(false);
+    }
+  }
 
-  const searchUrl = useMemo(() => {
-    // The food picker is /api/foods with filters; the backend handles search.
-    const params = new URLSearchParams();
-    params.set("lang", lang);
-    params.set("limit", "5000");
-    params.set("offset", "0");
-    if (searchInput.trim()) {
-      params.set("search", searchInput.trim());
+  async function addFood(food: ExternalFood) {
+    if (mealItems.some((item) => item.id === food.id)) {
+      return;
     }
 
-    if (selectedCategoryId) {
-      params.set("category_id", selectedCategoryId);
-    }
-    if (selectedSubcategoryId) {
-      params.set("subcategory_id", selectedSubcategoryId);
-    }
-    return `${API_BASE}/api/foods?${params.toString()}`;
-  }, [lang, searchInput, selectedCategoryId, selectedSubcategoryId]);
-
-  useEffect(() => {
-    // Refetch the picker any time filters or search text change.
-    setLoadingSearch(true);
+    setLoadingFoodId(food.id);
     setError(null);
-    fetch(searchUrl)
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Failed to search foods");
-        }
-        const payload = (await response.json()) as { items: FoodSearchItem[] };
-        setSearchResults(payload.items);
-      })
-      .catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : "Unknown error";
-        setError(message);
-      })
-      .finally(() => setLoadingSearch(false));
-  }, [searchUrl]);
 
-  function addFood(food: FoodSearchItem) {
-    setMealItems((current) => {
-      // Prevent duplicates; grams can be edited after selection.
-      const exists = current.some((item) => item.food_id === food.id);
-      if (exists) {
-        return current;
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/external/foods/${food.id}/nutrients?lang=ro&canonical_only=true`,
+      );
+
+      if (!response.ok) {
+        throw new Error("Nu am putut încărca nutrienții pentru aliment.");
       }
-      return [
-        ...current,
+
+      const payload = (await response.json()) as ExternalFoodNutrientsResponse;
+      setMealItems((currentItems) => [
+        ...currentItems,
         {
-          food_id: food.id,
-          category_name: food.category_name_display ?? "-",
-          subcategory_name: food.subcategory_name_display ?? "-",
-          name: food.name_display,
+          id: food.id,
+          food: payload.food,
           grams: 100,
+          nutrients: buildNutrientMap(payload.nutrients),
         },
-      ];
-    });
+      ]);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Eroare necunoscută";
+      setError(message);
+    } finally {
+      setLoadingFoodId(null);
+    }
   }
 
   function updateGrams(foodId: number, grams: number) {
-    // Keep the selected food identity stable while changing only its grams.
-    setMealItems((current) =>
-      current.map((item) =>
-        item.food_id === foodId ? { ...item, grams } : item,
+    setMealItems((currentItems) =>
+      currentItems.map((item) =>
+        item.id === foodId
+          ? { ...item, grams: Number.isFinite(grams) && grams > 0 ? grams : 1 }
+          : item,
       ),
     );
   }
 
-  function removeMealItem(foodId: number) {
-    setMealItems((current) =>
-      current.filter((item) => item.food_id !== foodId),
+  function removeFood(foodId: number) {
+    setMealItems((currentItems) =>
+      currentItems.filter((item) => item.id !== foodId),
     );
   }
 
-  async function calculateMeal() {
-    if (mealItems.length === 0) {
-      setError("Add at least one food before calculating");
-      return;
-    }
+  function renderNutrientCell(item: MealItem, column: NutrientColumn) {
+    const nutrient = item.nutrients[column.key];
+    const scaledValue = scaleValue(nutrient?.value, item.grams);
 
-    setLoadingCalc(true);
-    setError(null);
-    setCalcResult(null);
-
-    try {
-      // The backend does nutrient math so UI and API stay consistent.
-      const response = await fetch(`${API_BASE}/api/calc/meal?lang=${lang}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: mealItems.map((item) => ({
-            food_id: item.food_id,
-            grams: item.grams,
-          })),
-        }),
-      });
-
-      if (!response.ok) {
-        const payload = (await response.json()) as { detail?: string };
-        throw new Error(payload.detail ?? "Calculation failed");
-      }
-
-      const payload = (await response.json()) as CalcResponse;
-      setCalcResult(payload);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      setError(message);
-    } finally {
-      setLoadingCalc(false);
-    }
+    return (
+      <td
+        key={column.key}
+        style={{
+          borderBottom: "1px solid rgba(23, 33, 29, 0.09)",
+          padding: "14px 12px",
+          verticalAlign: "top",
+        }}
+      >
+        <strong>{formatNumber(scaledValue)}</strong>
+        <span style={{ color: "#52645b", fontSize: 12 }}> {column.unit}</span>
+        {nutrient?.value_qualifier && nutrient.raw_value && (
+          <div style={{ color: "#9a5a32", fontSize: 12, marginTop: 4 }}>
+            sursă: {nutrient.raw_value}
+          </div>
+        )}
+        {!nutrient && (
+          <div style={{ color: "#9a5a32", fontSize: 12, marginTop: 4 }}>
+            lipsă în sursă
+          </div>
+        )}
+      </td>
+    );
   }
 
   return (
-    <main style={{ padding: 24, fontFamily: "sans-serif" }}>
-      <h1>Meal Calculator</h1>
-      <p>Compute totals by grams using wt_g as scaling base.</p>
-
-      <section style={{ display: "flex", gap: 12, marginBottom: 16 }}>
-        <button
-          type="button"
-          onClick={() => setLang("en")}
-          disabled={lang === "en"}
-        >
-          EN
-        </button>
-        <button
-          type="button"
-          onClick={() => setLang("ro")}
-          disabled={lang === "ro"}
-        >
-          RO
-        </button>
-      </section>
-
-      <section style={{ display: "grid", gap: 8, marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select
-            value={selectedCategoryId}
-            onChange={(event) => {
-              setSelectedCategoryId(event.target.value);
-              setSelectedSubcategoryId("");
+    <main style={shellStyle}>
+      <section
+        style={{
+          display: "grid",
+          gap: 28,
+          gridTemplateColumns: "minmax(0, 0.9fr) minmax(0, 1.1fr)",
+          marginBottom: 28,
+        }}
+      >
+        <div>
+          <p
+            style={{
+              color: "#2d5f4c",
+              fontSize: 13,
+              fontWeight: 800,
+              margin: "0 0 12px",
+              textTransform: "uppercase",
             }}
-            style={{ padding: 8, minWidth: 240 }}
           >
-            <option value="">All categories</option>
-            {categories.map((category) => (
-              <option key={category.id} value={String(category.id)}>
-                {category.name_display}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={selectedSubcategoryId}
-            onChange={(event) => setSelectedSubcategoryId(event.target.value)}
-            style={{ padding: 8, minWidth: 240 }}
-            disabled={!selectedCategoryId}
+            Calculator nutrițional
+          </p>
+          <h1
+            style={{
+              fontSize: 46,
+              lineHeight: 1.08,
+              margin: "0 0 14px",
+              maxWidth: 620,
+            }}
           >
-            <option value="">All foods</option>
-            {subcategories.map((subcategory) => (
-              <option key={subcategory.id} value={String(subcategory.id)}>
-                {subcategory.name_display}
-              </option>
-            ))}
-          </select>
+            Calculează rapid macronutrienții pe baza sursei alese.
+          </h1>
+          <p
+            style={{
+              color: "#52645b",
+              fontSize: 18,
+              lineHeight: 1.65,
+              margin: 0,
+              maxWidth: 640,
+            }}
+          >
+            Datele vin din surse alimentare europene importate în platformă.
+          </p>
+        </div>
 
-          <select
-            value={selectedFoodId}
-            onChange={(event) => {
-              const foodId = event.target.value;
-              setSelectedFoodId(foodId);
+        <div
+          style={{
+            ...panelStyle,
+            alignSelf: "start",
+            display: "grid",
+            gap: 14,
+            padding: 20,
+          }}
+        >
+          <span style={labelStyle}>Sursă</span>
+          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
+            {SOURCES.map((source) => {
+              const isSelected = source.code === selectedSource;
 
-              const selectedFood = searchResults.find(
-                (food) => String(food.id) === foodId,
+              return (
+                <button
+                  key={source.code}
+                  type="button"
+                  onClick={() => {
+                    setSelectedSource(source.code);
+                    setSearchResults([]);
+                    setError(null);
+                  }}
+                  style={{
+                    border: isSelected
+                      ? "1px solid #1f4f40"
+                      : "1px solid rgba(23, 33, 29, 0.14)",
+                    borderRadius: 8,
+                    backgroundColor: isSelected ? "#e7f1ec" : "#ffffff",
+                    color: "#17211d",
+                    cursor: "pointer",
+                    padding: "13px 14px",
+                    textAlign: "left",
+                  }}
+                >
+                  <strong style={{ display: "block", fontSize: 15 }}>
+                    {source.label}
+                  </strong>
+                  <span style={{ color: "#52645b", fontSize: 12 }}>
+                    {source.detail}
+                  </span>
+                </button>
               );
+            })}
+          </div>
 
-              if (selectedFood) {
-                addFood(selectedFood);
-              }
+          <form
+            onSubmit={searchFoods}
+            style={{
+              display: "grid",
+              gap: 10,
+              gridTemplateColumns: "minmax(0, 1fr) auto",
+              marginTop: 6,
             }}
-            style={{ padding: 8, minWidth: 280 }}
           >
-            <option value="">All food descriptions</option>
-            {searchResults.map((food) => (
-              <option key={food.id} value={String(food.id)}>
-                {food.name_display}
-              </option>
-            ))}
-          </select>
+            <label>
+              <span style={labelStyle}>Aliment</span>
+              <input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="ex: banana, potato, milk"
+                style={inputStyle}
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={loadingSearch}
+              style={{ ...primaryButtonStyle, alignSelf: "end" }}
+            >
+              {loadingSearch ? "Caut..." : "Caută"}
+            </button>
+          </form>
         </div>
       </section>
 
-      <section style={{ marginBottom: 16 }}>
-        <h2>Meal Items</h2>
-        {mealItems.length === 0 && <p>No foods selected yet.</p>}
-        {mealItems.length > 0 && (
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
-            <thead>
-              <tr>
-                {[
-                  "Category",
-                  "Food",
-                  "Food Description",
-                  "Grams",
-                  "Remove",
-                ].map((header) => (
-                  <th
-                    key={header}
-                    style={{
-                      border: "1px solid #ccc",
-                      padding: 8,
-                      textAlign: "left",
-                      backgroundColor: "#f4f4f4",
-                    }}
-                  >
-                    {header}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {mealItems.map((item) => (
-                <tr key={item.food_id}>
-                  <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                    {item.category_name}
-                  </td>
-                  <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                    {item.subcategory_name}
-                  </td>
-                  <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                    {item.name}
-                  </td>
-                  <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                    <input
-                      type="number"
-                      value={item.grams}
-                      min={1}
-                      step={1}
-                      onChange={(event) =>
-                        updateGrams(item.food_id, Number(event.target.value))
-                      }
-                      style={{ width: 100 }}
-                    />
-                  </td>
-                  <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                    <button
-                      type="button"
-                      onClick={() => removeMealItem(item.food_id)}
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <button
-          type="button"
-          onClick={calculateMeal}
-          disabled={loadingCalc || mealItems.length === 0}
-          style={{ marginTop: 12 }}
+      {error && (
+        <p
+          style={{
+            backgroundColor: "#fff5f0",
+            border: "1px solid #efb99b",
+            borderRadius: 8,
+            color: "#8a3f1f",
+            margin: "0 0 18px",
+            padding: "12px 14px",
+          }}
         >
-          {loadingCalc ? "Calculating..." : "Calculate"}
-        </button>
-      </section>
+          {error}
+        </p>
+      )}
 
-      {error && <p style={{ color: "crimson" }}>{error}</p>}
+      <section
+        style={{
+          display: "grid",
+          gap: 22,
+          gridTemplateColumns: "minmax(300px, 0.8fr) minmax(0, 1.2fr)",
+        }}
+      >
+        <div style={{ ...panelStyle, overflow: "hidden" }}>
+          <div
+            style={{
+              borderBottom: "1px solid rgba(23, 33, 29, 0.1)",
+              padding: "18px 20px",
+            }}
+          >
+            <h2 style={{ fontSize: 20, margin: 0 }}>Rezultate căutare</h2>
+          </div>
 
-      {calcResult && (
-        <section>
-          <h2>Totals</h2>
-          {calcResult.incomplete_data && (
-            <p style={{ color: "darkorange" }}>
-              Warning: some nutrients are missing, totals may be underestimated.
+          <div style={{ display: "grid", gap: 0 }}>
+            {searchResults.length === 0 && (
+              <p style={{ color: "#52645b", lineHeight: 1.55, margin: 0, padding: 20 }}>
+                Caută un aliment ca să îl adaugi în calcul.
+              </p>
+            )}
+
+            {searchResults.map((food) => (
+              <div
+                key={food.id}
+                style={{
+                  borderBottom: "1px solid rgba(23, 33, 29, 0.08)",
+                  display: "grid",
+                  gap: 12,
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  padding: "15px 20px",
+                }}
+              >
+                <div>
+                  <strong style={{ display: "block", lineHeight: 1.35 }}>
+                    {food.name_display}
+                  </strong>
+                  <span style={{ color: "#52645b", fontSize: 13 }}>
+                    {food.category_name_display ?? "Fără categorie"} ·{" "}
+                    {food.basis ?? "per_100g"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => addFood(food)}
+                  disabled={
+                    loadingFoodId === food.id ||
+                    mealItems.some((item) => item.id === food.id)
+                  }
+                  style={secondaryButtonStyle}
+                >
+                  {mealItems.some((item) => item.id === food.id)
+                    ? "Adăugat"
+                    : loadingFoodId === food.id
+                      ? "..."
+                      : "Adaugă"}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ ...panelStyle, overflow: "hidden" }}>
+          <div
+            style={{
+              alignItems: "center",
+              borderBottom: "1px solid rgba(23, 33, 29, 0.1)",
+              display: "flex",
+              gap: 16,
+              justifyContent: "space-between",
+              padding: "18px 20px",
+            }}
+          >
+            <h2 style={{ fontSize: 20, margin: 0 }}>Tabel calcul</h2>
+            <span style={{ color: "#52645b", fontSize: 13 }}>
+              {mealItems.length} alimente
+            </span>
+          </div>
+
+          {mealItems.length === 0 ? (
+            <p style={{ color: "#52645b", lineHeight: 1.55, margin: 0, padding: 20 }}>
+              Adaugă cel puțin un aliment pentru tabelul de nutrienți.
             </p>
-          )}
-          {hasBelowLimitNotes(calcResult.items) && (
-            <p style={{ color: "darkorange" }}>
-              Some source values were below reporting limits and were calculated as 0.
-            </p>
-          )}
-          {calcGroups.map((group) => {
-            const groupTotals = sumCalcItems(group.items);
-
-            return (
-              <section key={group.grams} style={{ marginBottom: 16 }}>
-                <h3>Calculated for {formatNumber(group.grams)} g</h3>
-
-                <table style={{ borderCollapse: "collapse", width: "100%" }}>
-                  <thead>
-                    <tr>
-                      {[
-                        "Category",
-                        "Food",
-                        "Food Description",
-                        "Grams",
-                        "Factor",
-                        "Kcal",
-                        "Protein (g)",
-                        "Carbs (g)",
-                        "Fat (g)",
-                        "Fiber (g)",
-                      ].map((header) => (
-                        <th
-                          key={header}
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
+                style={{
+                  borderCollapse: "collapse",
+                  minWidth: 920,
+                  width: "100%",
+                }}
+              >
+                <thead>
+                  <tr>
+                    {[
+                      "Aliment",
+                      "Sursă",
+                      "Grame",
+                      ...NUTRIENT_COLUMNS.map((column) => column.label),
+                      "",
+                    ].map((header) => (
+                      <th
+                        key={header}
+                        style={{
+                          backgroundColor: "#f2f5f1",
+                          borderBottom: "1px solid rgba(23, 33, 29, 0.12)",
+                          color: "#52645b",
+                          fontSize: 12,
+                          padding: "12px",
+                          textAlign: "left",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        {header}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {mealItems.map((item) => (
+                    <tr key={item.id}>
+                      <td
+                        style={{
+                          borderBottom: "1px solid rgba(23, 33, 29, 0.09)",
+                          padding: "14px 12px",
+                          verticalAlign: "top",
+                        }}
+                      >
+                        <strong style={{ display: "block", lineHeight: 1.35 }}>
+                          {item.food.name_display}
+                        </strong>
+                        <span style={{ color: "#52645b", fontSize: 12 }}>
+                          {item.food.category_name_display ?? "Fără categorie"}
+                        </span>
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid rgba(23, 33, 29, 0.09)",
+                          padding: "14px 12px",
+                          verticalAlign: "top",
+                        }}
+                      >
+                        {item.food.data_source_code}
+                      </td>
+                      <td
+                        style={{
+                          borderBottom: "1px solid rgba(23, 33, 29, 0.09)",
+                          padding: "14px 12px",
+                          verticalAlign: "top",
+                        }}
+                      >
+                        <input
+                          min={1}
+                          onChange={(event) =>
+                            updateGrams(item.id, Number(event.target.value))
+                          }
+                          step={1}
+                          type="number"
+                          value={item.grams}
+                          style={{ ...inputStyle, maxWidth: 92, padding: "9px 10px" }}
+                        />
+                      </td>
+                      {NUTRIENT_COLUMNS.map((column) =>
+                        renderNutrientCell(item, column),
+                      )}
+                      <td
+                        style={{
+                          borderBottom: "1px solid rgba(23, 33, 29, 0.09)",
+                          padding: "14px 12px",
+                          textAlign: "right",
+                          verticalAlign: "top",
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => removeFood(item.id)}
                           style={{
-                            border: "1px solid #ccc",
-                            padding: 8,
-                            textAlign: "left",
-                            backgroundColor: "#f4f4f4",
+                            ...secondaryButtonStyle,
+                            color: "#8a3f1f",
+                            padding: "9px 11px",
                           }}
                         >
-                          {header}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {group.items.map((item) => {
-                      const mealEntry = findMealEntry(mealItems, item.food_id);
-
-                      return (
-                        <tr key={item.food_id}>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {mealEntry?.category_name ?? "-"}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {mealEntry?.subcategory_name ?? "-"}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {item.name}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatNumber(item.grams)}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {item.factor === null
-                              ? "-"
-                              : item.factor.toFixed(4)}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatCalcNutrient(item, "kcal")}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatCalcNutrient(item, "protein_g")}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatCalcNutrient(item, "carbs_g")}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatCalcNutrient(item, "fat_g")}
-                          </td>
-                          <td style={{ border: "1px solid #ddd", padding: 8 }}>
-                            {formatCalcNutrient(item, "fiber_g")}
-                          </td>
-                        </tr>
-                      );
-                    })}
-
-                    <tr>
-                      <td
-                        colSpan={5}
-                        style={{
-                          border: "1px solid #ddd",
-                          padding: 8,
-                          fontWeight: "bold",
-                        }}
-                      >
-                        TOTAL
-                      </td>
-                      <td
-                        style={{
-                          border: "1px solid #ddd",
-                          padding: 8,
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {formatNumber(groupTotals.kcal)}
-                      </td>
-                      <td
-                        style={{
-                          border: "1px solid #ddd",
-                          padding: 8,
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {formatNumber(groupTotals.protein_g)}
-                      </td>
-                      <td
-                        style={{
-                          border: "1px solid #ddd",
-                          padding: 8,
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {formatNumber(groupTotals.carbs_g)}
-                      </td>
-                      <td
-                        style={{
-                          border: "1px solid #ddd",
-                          padding: 8,
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {formatNumber(groupTotals.fat_g)}
-                      </td>
-                      <td
-                        style={{
-                          border: "1px solid #ddd",
-                          padding: 8,
-                          fontWeight: "bold",
-                        }}
-                      >
-                        {formatNumber(groupTotals.fiber_g)}
+                          Șterge
+                        </button>
                       </td>
                     </tr>
-                  </tbody>
-                </table>
-              </section>
-            );
-          })}
-        </section>
-      )}
+                  ))}
+                  <tr>
+                    <td
+                      colSpan={3}
+                      style={{
+                        backgroundColor: "#eef4ef",
+                        fontWeight: 900,
+                        padding: "15px 12px",
+                      }}
+                    >
+                      Total
+                    </td>
+                    {NUTRIENT_COLUMNS.map((column) => (
+                      <td
+                        key={column.key}
+                        style={{
+                          backgroundColor: "#eef4ef",
+                          fontWeight: 900,
+                          padding: "15px 12px",
+                        }}
+                      >
+                        {formatNumber(totals[column.key])}{" "}
+                        <span style={{ color: "#52645b", fontSize: 12 }}>
+                          {column.unit}
+                        </span>
+                      </td>
+                    ))}
+                    <td style={{ backgroundColor: "#eef4ef" }} />
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {(sourceMarkersVisible || missingValuesVisible) && (
+            <div
+              style={{
+                borderTop: "1px solid rgba(23, 33, 29, 0.1)",
+                color: "#52645b",
+                display: "grid",
+                gap: 6,
+                fontSize: 13,
+                lineHeight: 1.55,
+                padding: "14px 20px",
+              }}
+            >
+              {sourceMarkersVisible && (
+                <span>
+                  Valorile marcate cu sursă precum &lt; 0,01 sau traces sunt
+                  calculate ca 0, dar textul original rămâne vizibil.
+                </span>
+              )}
+              {missingValuesVisible && (
+                <span>
+                  Nutrienții lipsă în sursa aleasă sunt calculați ca 0 în total.
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
     </main>
   );
 }
