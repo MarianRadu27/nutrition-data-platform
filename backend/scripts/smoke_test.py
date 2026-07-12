@@ -233,7 +233,7 @@ def assert_api_behaviour(database: str, calc_food_id: int) -> None:
                 raise AssertionError(f"Expected {calc_field} to calculate as 0")
             break
 
-    invalid_admin = client.post(
+    disabled_admin = client.post(
         "/api/admin/foods",
         headers={"X-Admin-Token": os.environ["ADMIN_TOKEN"]},
         json={
@@ -248,10 +248,10 @@ def assert_api_behaviour(database: str, calc_food_id: int) -> None:
             "fiber_g": 1,
         },
     )
-    if invalid_admin.status_code != 422:
+    if disabled_admin.status_code != 403:
         raise AssertionError(
-            f"Expected admin negative value validation to return 422, "
-            f"got {invalid_admin.status_code}: {invalid_admin.text}"
+            f"Expected disabled admin food creation to return 403, "
+            f"got {disabled_admin.status_code}: {disabled_admin.text}"
         )
 
 

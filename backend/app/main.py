@@ -22,6 +22,7 @@ CALC_NOTE_FIELDS = {
     db_col: out_col for db_col, out_col in BASE_NUTRIENTS
 }
 logger = logging.getLogger(__name__)
+ADMIN_FOOD_CREATION_ENABLED = False
 
 
 def _as_float(value: Any) -> float:
@@ -379,6 +380,12 @@ def create_food_admin(
     connection: Connection = Depends(get_db_connection),
 ) -> schemas.AdminFoodResponse:
     """Create one custom food and link it to an existing or new hierarchy path."""
+    if not ADMIN_FOOD_CREATION_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin food creation is disabled for the initial site version",
+        )
+
     try:
         with connection.cursor() as cursor:
             category_id: int | None = None

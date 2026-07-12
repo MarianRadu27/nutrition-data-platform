@@ -2,7 +2,7 @@
 
 A full-stack nutrition application built with **FastAPI**, **MySQL**, and **Next.js**.
 
-The app lets users browse foods, filter by category and food group, calculate meal nutrition from grams, add new foods from an admin page, and work with Romanian translations for food data.
+The app lets users browse foods, filter by category and food group, calculate meal nutrition from grams, and work with Romanian translations for food data.
 
 ## Main Features
 
@@ -12,7 +12,7 @@ The app lets users browse foods, filter by category and food group, calculate me
 - Show or hide extra nutrient columns.
 - Sort and limit food results.
 - Calculate meal nutrition totals from selected foods and grams.
-- Add foods from an admin page.
+- Keep food creation disabled for the initial public version.
 - Import food data from Excel.
 - Mark foods that should become their own food group with `own_subcategory`.
 - Export, review, import, and apply Romanian translations.
@@ -345,8 +345,8 @@ Meal nutrition calculator.
 /admin/add-food
 ```
 
-Local admin page for adding a food item. It is not linked in the main navigation.
-When using it, enter the `ADMIN_TOKEN` value from `backend/.env`.
+Local admin page placeholder. Food creation is disabled for the initial public
+version, including for admin users.
 
 ## Environment Files
 
