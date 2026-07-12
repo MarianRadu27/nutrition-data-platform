@@ -139,6 +139,85 @@ class FoodsListResponse(BaseModel):
     count: int
 
 
+class ExternalDataSourceOut(BaseModel):
+    """External dataset available for source-based browsing."""
+
+    id: int
+    code: str
+    name: str
+    country: str | None = None
+    publisher: str | None = None
+    version: str | None = None
+    attribution_text: str | None = None
+
+
+class ExternalCategoryOut(BaseModel):
+    """Source category option for external foods."""
+
+    category_original: str | None = None
+    category_en: str | None = None
+    category_ro: str | None = None
+    name_display: str
+    food_count: int
+
+
+class ExternalFoodOut(BaseModel):
+    """Food row from an external source."""
+
+    id: int
+    data_source_code: str
+    source_food_code: str
+    food_name_original: str | None = None
+    food_name_en: str | None = None
+    food_name_ro: str | None = None
+    name_display: str
+    category_original: str | None = None
+    category_en: str | None = None
+    category_ro: str | None = None
+    category_name_display: str | None = None
+    basis: str | None = None
+    notes: str | None = None
+
+
+class ExternalFoodsListResponse(BaseModel):
+    """Paginated response for external source foods."""
+
+    items: list[ExternalFoodOut]
+    limit: int
+    offset: int
+    count: int
+
+
+class ExternalNutrientValueOut(BaseModel):
+    """One nutrient value for an external source food."""
+
+    source_nutrient_id: int
+    source_nutrient_code: str
+    source_nutrient_name: str
+    source_nutrient_name_ro: str | None = None
+    nutrient_name_display: str
+    source_standard_tag: str | None = None
+    source_unit: str | None = None
+    canonical_code: str | None = None
+    canonical_name_en: str | None = None
+    canonical_name_ro: str | None = None
+    canonical_name_display: str | None = None
+    raw_value: str | None = None
+    value: float | None = None
+    value_qualifier: str | None = None
+    unit: str | None = None
+    basis: str | None = None
+    reference_code: str | None = None
+    reference_text: str | None = None
+
+
+class ExternalFoodNutrientsResponse(BaseModel):
+    """One external food plus its nutrient values."""
+
+    food: ExternalFoodOut
+    nutrients: list[ExternalNutrientValueOut]
+
+
 class MealCalcItemIn(BaseModel):
     """One user-selected food and the grams to calculate."""
 

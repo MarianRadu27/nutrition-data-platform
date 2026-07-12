@@ -150,6 +150,111 @@ def get_food_detail(
     return schemas.FoodDetailOut(**food)
 
 
+@app.get("/api/external/sources", response_model=list[schemas.ExternalDataSourceOut])
+def get_external_sources(
+    connection: Connection = Depends(get_db_connection),
+) -> list[dict[str, Any]]:
+    """List external data sources available for browsing."""
+    with connection.cursor() as cursor:
+        return repositories.list_external_sources(cursor)
+
+
+@app.get(
+    "/api/external/sources/{source_code}/categories",
+    response_model=list[schemas.ExternalCategoryOut],
+)
+def get_external_categories(
+    source_code: str,
+    lang: schemas.Lang = Query(default="en"),
+    connection: Connection = Depends(get_db_connection),
+) -> list[dict[str, Any]]:
+    """List categories for one external source."""
+    normalized_source_code = source_code.upper()
+    with connection.cursor() as cursor:
+        source = repositories.get_external_source_by_code(cursor, normalized_source_code)
+        if source is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"External source code={normalized_source_code} not found",
+            )
+        return repositories.list_external_categories(
+            cursor,
+            source_code=normalized_source_code,
+            lang=lang,
+        )
+
+
+@app.get(
+    "/api/external/sources/{source_code}/foods",
+    response_model=schemas.ExternalFoodsListResponse,
+)
+def get_external_foods(
+    source_code: str,
+    category: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+    lang: schemas.Lang = Query(default="en"),
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    connection: Connection = Depends(get_db_connection),
+) -> schemas.ExternalFoodsListResponse:
+    """Return external foods filtered by source/category/search."""
+    normalized_source_code = source_code.upper()
+    with connection.cursor() as cursor:
+        source = repositories.get_external_source_by_code(cursor, normalized_source_code)
+        if source is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"External source code={normalized_source_code} not found",
+            )
+        rows, total = repositories.list_external_foods(
+            cursor,
+            source_code=normalized_source_code,
+            category=category,
+            search=search,
+            lang=lang,
+            limit=limit,
+            offset=offset,
+        )
+    return schemas.ExternalFoodsListResponse(
+        items=rows,
+        limit=limit,
+        offset=offset,
+        count=total,
+    )
+
+
+@app.get(
+    "/api/external/foods/{source_food_id}/nutrients",
+    response_model=schemas.ExternalFoodNutrientsResponse,
+)
+def get_external_food_nutrients(
+    source_food_id: int,
+    lang: schemas.Lang = Query(default="en"),
+    canonical_only: bool = Query(default=False),
+    connection: Connection = Depends(get_db_connection),
+) -> schemas.ExternalFoodNutrientsResponse:
+    """Return one external food with its nutrient values."""
+    with connection.cursor() as cursor:
+        food = repositories.get_external_food(
+            cursor,
+            source_food_id=source_food_id,
+            lang=lang,
+        )
+        if food is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"External food id={source_food_id} not found",
+            )
+        nutrients = repositories.list_external_food_nutrients(
+            cursor,
+            source_food_id=source_food_id,
+            lang=lang,
+            canonical_only=canonical_only,
+        )
+
+    return schemas.ExternalFoodNutrientsResponse(food=food, nutrients=nutrients)
+
+
 @app.post("/api/calc/meal", response_model=schemas.MealCalcResponse)
 def calculate_meal(
     payload: schemas.MealCalcRequest,

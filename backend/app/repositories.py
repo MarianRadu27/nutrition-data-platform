@@ -286,6 +286,265 @@ def get_food_detail(cursor: Any, food_id: int, lang: Lang) -> dict[str, Any] | N
     return _normalize_nutrient_value_notes(row) if row else None
 
 
+def get_external_source_by_code(cursor: Any, source_code: str) -> dict[str, Any] | None:
+    """Return one external data source by code."""
+    cursor.execute(
+        """
+        SELECT
+            id,
+            code,
+            name,
+            country,
+            publisher,
+            version,
+            attribution_text
+        FROM data_sources
+        WHERE code = %s
+        """,
+        (source_code,),
+    )
+    return cursor.fetchone()
+
+
+def list_external_sources(cursor: Any) -> list[dict[str, Any]]:
+    """Return external data sources available for browsing."""
+    cursor.execute(
+        """
+        SELECT
+            id,
+            code,
+            name,
+            country,
+            publisher,
+            version,
+            attribution_text
+        FROM data_sources
+        ORDER BY name ASC
+        """
+    )
+    return cursor.fetchall()
+
+
+def list_external_categories(
+    cursor: Any,
+    *,
+    source_code: str,
+    lang: Lang,
+) -> list[dict[str, Any]]:
+    """Return source food categories for one external data source."""
+    category_display_expr = (
+        "COALESCE(sf.category_ro, sf.category_en, sf.category_original)"
+        if lang == "ro"
+        else "COALESCE(sf.category_en, sf.category_original)"
+    )
+    sql = f"""
+        SELECT
+            sf.category_original,
+            sf.category_en,
+            sf.category_ro,
+            {category_display_expr} AS name_display,
+            COUNT(*) AS food_count
+        FROM source_foods sf
+        JOIN data_sources ds ON ds.id = sf.data_source_id
+        WHERE ds.code = %s
+          AND {category_display_expr} IS NOT NULL
+        GROUP BY
+            sf.category_original,
+            sf.category_en,
+            sf.category_ro
+        ORDER BY name_display ASC
+    """
+    cursor.execute(sql, (source_code,))
+    return cursor.fetchall()
+
+
+def list_external_foods(
+    cursor: Any,
+    *,
+    source_code: str,
+    category: str | None,
+    search: str | None,
+    lang: Lang,
+    limit: int,
+    offset: int,
+) -> tuple[list[dict[str, Any]], int]:
+    """Return external source foods filtered by category/search."""
+    food_display_expr = (
+        "COALESCE(sf.food_name_ro, sf.food_name_en, sf.food_name_original)"
+        if lang == "ro"
+        else "COALESCE(sf.food_name_en, sf.food_name_original)"
+    )
+    category_display_expr = (
+        "COALESCE(sf.category_ro, sf.category_en, sf.category_original)"
+        if lang == "ro"
+        else "COALESCE(sf.category_en, sf.category_original)"
+    )
+
+    where_parts = ["ds.code = %s"]
+    params: list[Any] = [source_code]
+
+    if category:
+        where_parts.append(
+            """
+            (
+                sf.category_en = %s
+                OR sf.category_ro = %s
+                OR sf.category_original = %s
+            )
+            """
+        )
+        stripped_category = category.strip()
+        params.extend([stripped_category, stripped_category, stripped_category])
+
+    if search:
+        where_parts.append(
+            """
+            (
+                sf.food_name_en LIKE %s
+                OR sf.food_name_ro LIKE %s
+                OR sf.food_name_original LIKE %s
+            )
+            """
+        )
+        token = f"%{search.strip()}%"
+        params.extend([token, token, token])
+
+    where_sql = "WHERE " + " AND ".join(where_parts)
+
+    count_sql = f"""
+        SELECT COUNT(*) AS total
+        FROM source_foods sf
+        JOIN data_sources ds ON ds.id = sf.data_source_id
+        {where_sql}
+    """
+    cursor.execute(count_sql, params)
+    total = int(cursor.fetchone()["total"])
+
+    rows_sql = f"""
+        SELECT
+            sf.id,
+            ds.code AS data_source_code,
+            sf.source_food_code,
+            sf.food_name_original,
+            sf.food_name_en,
+            sf.food_name_ro,
+            {food_display_expr} AS name_display,
+            sf.category_original,
+            sf.category_en,
+            sf.category_ro,
+            {category_display_expr} AS category_name_display,
+            sf.basis,
+            sf.notes
+        FROM source_foods sf
+        JOIN data_sources ds ON ds.id = sf.data_source_id
+        {where_sql}
+        ORDER BY name_display ASC
+        LIMIT %s OFFSET %s
+    """
+    cursor.execute(rows_sql, [*params, limit, offset])
+    return cursor.fetchall(), total
+
+
+def get_external_food(
+    cursor: Any,
+    *,
+    source_food_id: int,
+    lang: Lang,
+) -> dict[str, Any] | None:
+    """Return one external food by internal source_foods id."""
+    food_display_expr = (
+        "COALESCE(sf.food_name_ro, sf.food_name_en, sf.food_name_original)"
+        if lang == "ro"
+        else "COALESCE(sf.food_name_en, sf.food_name_original)"
+    )
+    category_display_expr = (
+        "COALESCE(sf.category_ro, sf.category_en, sf.category_original)"
+        if lang == "ro"
+        else "COALESCE(sf.category_en, sf.category_original)"
+    )
+    sql = f"""
+        SELECT
+            sf.id,
+            ds.code AS data_source_code,
+            sf.source_food_code,
+            sf.food_name_original,
+            sf.food_name_en,
+            sf.food_name_ro,
+            {food_display_expr} AS name_display,
+            sf.category_original,
+            sf.category_en,
+            sf.category_ro,
+            {category_display_expr} AS category_name_display,
+            sf.basis,
+            sf.notes
+        FROM source_foods sf
+        JOIN data_sources ds ON ds.id = sf.data_source_id
+        WHERE sf.id = %s
+    """
+    cursor.execute(sql, (source_food_id,))
+    return cursor.fetchone()
+
+
+def list_external_food_nutrients(
+    cursor: Any,
+    *,
+    source_food_id: int,
+    lang: Lang,
+    canonical_only: bool,
+) -> list[dict[str, Any]]:
+    """Return nutrient values for one external food."""
+    nutrient_display_expr = (
+        "COALESCE(sn.source_nutrient_name_ro, sn.source_nutrient_name)"
+        if lang == "ro"
+        else "sn.source_nutrient_name"
+    )
+    canonical_display_expr = (
+        "COALESCE(cn.name_ro, cn.name_en)"
+        if lang == "ro"
+        else "cn.name_en"
+    )
+    where_parts = ["v.source_food_id = %s"]
+    params: list[Any] = [source_food_id]
+
+    if canonical_only:
+        where_parts.append("sn.canonical_nutrient_id IS NOT NULL")
+
+    where_sql = "WHERE " + " AND ".join(where_parts)
+    sql = f"""
+        SELECT
+            sn.id AS source_nutrient_id,
+            sn.source_nutrient_code,
+            sn.source_nutrient_name,
+            sn.source_nutrient_name_ro,
+            {nutrient_display_expr} AS nutrient_name_display,
+            sn.source_standard_tag,
+            sn.unit AS source_unit,
+            cn.canonical_code,
+            cn.name_en AS canonical_name_en,
+            cn.name_ro AS canonical_name_ro,
+            {canonical_display_expr} AS canonical_name_display,
+            v.raw_value,
+            v.value,
+            v.value_qualifier,
+            v.unit,
+            v.basis,
+            sr.source_code AS reference_code,
+            sr.reference_text
+        FROM source_food_nutrient_values v
+        JOIN source_nutrients sn ON sn.id = v.source_nutrient_id
+        LEFT JOIN canonical_nutrients cn ON cn.id = sn.canonical_nutrient_id
+        LEFT JOIN source_references sr ON sr.id = v.reference_id
+        {where_sql}
+        ORDER BY
+            cn.canonical_code IS NULL,
+            cn.canonical_code,
+            sn.source_nutrient_code,
+            sr.source_code
+    """
+    cursor.execute(sql, params)
+    return cursor.fetchall()
+
+
 def get_category_by_id(cursor: Any, category_id: int) -> dict[str, Any] | None:
     """Look up a category before linking a manually-added food."""
     cursor.execute(
