@@ -162,10 +162,10 @@ Apply database migrations:
 python scripts\apply_migrations.py
 ```
 
-Run the backend:
+Run the backend without activating the virtual environment:
 
 ```powershell
-uvicorn app.main:app --reload
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Backend URL:
@@ -203,13 +203,13 @@ Copy-Item .env.local.example .env.local
 Run the frontend:
 
 ```powershell
-npm run dev
+npm.cmd run dev -- --hostname 127.0.0.1 --port 3000
 ```
 
 Frontend URL:
 
 ```text
-http://localhost:3000
+http://127.0.0.1:3000
 ```
 
 ## Import The Sample Data
@@ -389,6 +389,24 @@ The sample dataset is explicitly allowed:
 
 ## Useful Commands
 
+Start backend and frontend from the project root:
+
+```powershell
+.\dev.cmd
+```
+
+Start only the backend:
+
+```powershell
+.\dev-backend.cmd
+```
+
+Start only the frontend:
+
+```powershell
+.\dev-frontend.cmd
+```
+
 Start database:
 
 ```powershell
@@ -399,8 +417,7 @@ Apply migrations:
 
 ```powershell
 cd backend
-.\.venv\Scripts\Activate.ps1
-python scripts\apply_migrations.py
+.\.venv\Scripts\python.exe scripts\apply_migrations.py
 ```
 
 Stop database:
@@ -412,23 +429,20 @@ docker compose -f infra/docker-compose.yml down
 Run backend:
 
 ```powershell
-cd backend
-.\.venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload
+.\dev-backend.cmd
 ```
 
 Run frontend:
 
 ```powershell
-cd frontend
-npm run dev
+.\dev-frontend.cmd
 ```
 
 Build frontend:
 
 ```powershell
 cd frontend
-npm run build
+npm.cmd run build
 ```
 
 Run backend smoke test:
