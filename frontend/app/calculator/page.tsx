@@ -191,8 +191,18 @@ export default function CalculatorPage() {
   const sourceMarkersVisible = mealItems.some(hasSourceMarker);
   const missingValuesVisible = mealItems.some(hasMissingNutrient);
 
-  async function searchFoods(event: FormEvent) {
-    event.preventDefault();
+  function handleSourceChange(sourceCode: SourceCode) {
+    setSelectedSource(sourceCode);
+    setError(null);
+
+    if (searchInput.trim()) {
+      void runFoodSearch(sourceCode);
+    } else {
+      setSearchResults([]);
+    }
+  }
+
+  async function runFoodSearch(sourceCode: SourceCode) {
     const query = searchInput.trim();
     if (!query) {
       setError("Scrie numele unui aliment.");
@@ -211,7 +221,7 @@ export default function CalculatorPage() {
       params.set("offset", "0");
 
       const response = await fetch(
-        `${API_BASE}/api/external/sources/${selectedSource}/foods?${params.toString()}`,
+        `${API_BASE}/api/external/sources/${sourceCode}/foods?${params.toString()}`,
       );
 
       if (!response.ok) {
@@ -227,6 +237,11 @@ export default function CalculatorPage() {
     } finally {
       setLoadingSearch(false);
     }
+  }
+
+  async function searchFoods(event: FormEvent) {
+    event.preventDefault();
+    await runFoodSearch(selectedSource);
   }
 
   async function addFood(food: ExternalFood) {
@@ -364,41 +379,22 @@ export default function CalculatorPage() {
           }}
         >
           <span style={labelStyle}>Sursă</span>
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr" }}>
-            {SOURCES.map((source) => {
-              const isSelected = source.code === selectedSource;
-
-              return (
-                <button
-                  key={source.code}
-                  type="button"
-                  onClick={() => {
-                    setSelectedSource(source.code);
-                    setSearchResults([]);
-                    setError(null);
-                  }}
-                  style={{
-                    border: isSelected
-                      ? "1px solid #1f4f40"
-                      : "1px solid rgba(23, 33, 29, 0.14)",
-                    borderRadius: 8,
-                    backgroundColor: isSelected ? "#e7f1ec" : "#ffffff",
-                    color: "#17211d",
-                    cursor: "pointer",
-                    padding: "13px 14px",
-                    textAlign: "left",
-                  }}
-                >
-                  <strong style={{ display: "block", fontSize: 15 }}>
-                    {source.label}
-                  </strong>
-                  <span style={{ color: "#52645b", fontSize: 12 }}>
-                    {source.detail}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+          <label>
+            <span style={labelStyle}>Sursa activa</span>
+            <select
+              value={selectedSource}
+              onChange={(event) =>
+                handleSourceChange(event.target.value as SourceCode)
+              }
+              style={inputStyle}
+            >
+              {SOURCES.map((source) => (
+                <option key={source.code} value={source.code}>
+                  {source.label} - {source.detail}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <form
             onSubmit={searchFoods}
